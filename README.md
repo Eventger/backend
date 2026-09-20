@@ -61,9 +61,9 @@ python manage.py shell -c 'from django.db import connection; connection.ensure_c
 ```
 
 Este arranque no ejecuta `migrate` automáticamente ni modifica las tablas existentes
-creadas en Supabase. Antes de implementar el dominio, mapear organizadores,
-configuracion_organizador, eventos y gestiones, y acordar la integración con el
-usuario Django y el historial de migraciones. No ejecutar nuevas migraciones que
+creadas en Supabase. Antes de implementar el dominio, obtener el SQL verificable de usuarios, eventos
+y subtareas y acordar su mapeo, integración con el usuario Django e historial de
+migraciones. Los nombres provienen de la referencia visual y aún no están verificados. No ejecutar nuevas migraciones que
 creen tablas duplicadas. Las vistas y triggers existentes también deben versionarse.
 
 ## Frontend y permisos
@@ -81,3 +81,9 @@ negocio debe filtrar por el organizador autenticado. No hay endpoints públicos 
 - https://render.com/docs/deploy-django
 - https://render.com/docs/blueprint-spec
 - https://supabase.com/docs/guides/database/connecting-to-postgres
+
+## Validación automática y contribuciones
+
+Consulta [la guía del equipo](docs/validacion-backend.md) para Conventional Commits,
+PostgreSQL aislado, checks, cobertura, Sonar y pendientes de Supabase/Render.
+La CI no requiere secretos de producción ni implementar HU futuras.
