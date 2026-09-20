@@ -1,0 +1,16 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.coverage.run]
+source = ["."]
+relative_files = true
+omit = [".venv/*", "venv/*", "node_modules/*", "**/tests.py", "**/test_*.py", "**/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.coverage.xml]
+output = "coverage.xml"

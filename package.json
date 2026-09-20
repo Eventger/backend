@@ -1,0 +1,13 @@
+{
+  "name": "eventger-backend-dev-tools",
+  "private": true,
+  "engines": {"node": "24.x"},
+  "scripts": {
+    "commitlint": "commitlint --verbose",
+    "hooks:install": "git config core.hooksPath .githooks"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3"
+  }
+}

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ ! -x ./node_modules/.bin/commitlint ]; then
+  echo 'Instala las herramientas con npm ci antes de crear el commit.' >&2
+  exit 1
+fi
+./node_modules/.bin/commitlint --edit "$1" --verbose
