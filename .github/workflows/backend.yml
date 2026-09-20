@@ -158,6 +158,10 @@ jobs:
                 exit 1
               fi
             done
+            if [[ "$SONAR_HOST_URL" != https://* ]]; then
+              echo '::error::SONAR_HOST_URL debe usar HTTPS.'
+              exit 1
+            fi
             if [[ "$SONAR_HOST_URL" == *sonarcloud.io* || "$SONAR_HOST_URL" == *sonarqube.us* ]]; then
               if [[ -z "$SONAR_ORGANIZATION" ]]; then
                 echo '::error::SonarQube Cloud requiere SONAR_ORGANIZATION.'
