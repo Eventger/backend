@@ -21,7 +21,7 @@ Las dependencias de producción y los comandos de Render permanecen intactos.
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --require-hashes -r requirements-ci.txt
+python -m pip install --only-binary=:all: --require-hashes -r requirements-ci.txt
 npm ci --ignore-scripts
 npm run hooks:install
 ```
@@ -154,6 +154,15 @@ Jira o texto de commits, ni pull_request_target.
 
 Sonar está preparado como proyecto Backend independiente. Por defecto indica
 **“análisis no ejecutado”** en main/manual. No se analiza ningún PR ni otra rama.
+Esto describe el job de nuestro workflow. La integración de SonarQube Cloud puede
+publicar otro check independiente (`SonarCloud Code Analysis`) mediante análisis
+automático, incluso en PR. Antes de activar el scanner de CI, revisar en el proyecto
+Sonar Administration → Analysis Method si Automatic Analysis está activo. Elegir un
+único mecanismo: Sonar no admite usar análisis automático y de CI simultáneamente.
+Para usar la cobertura generada por este workflow, pasar al análisis de CI desactivando
+el automático desde Sonar cuando la configuración esté lista. Este cambio remoto no
+se realiza desde el repositorio. Un job Sonar omitido no demuestra ausencia de otros
+análisis ni aprobación de su Quality Gate.
 Community Build documenta análisis de main; verificar edición y capacidades reales
 antes de añadir PR/ramas (Server requiere una edición compatible; Cloud depende del
 plan). No se ha contratado ni aprovisionado nada.
