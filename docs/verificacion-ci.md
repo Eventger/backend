@@ -39,7 +39,7 @@ No se realizaron commits, push, merge, despliegues ni cambios remotos.
 | Mensajes inválidos | Rechazados con exit 1 |
 | Rango de commits en repositorio temporal | Historial inválido anterior excluido; commit nuevo inválido rechazado |
 | Hook local | Mensaje válido aceptado; inválido rechazado |
-| Título de PR tipo merge | Rechazado; commits automáticos reconocidos conservan excepción |
+| Título de PR tipo merge | Verificado tras la corrección descrita abajo; commits automáticos reconocidos conservan excepción |
 | Entorno sintético de producción | DATABASE_URL, SECRET_KEY, RENDER y CORS no contaminan settings_test |
 | Suite vacía | Rechazada con exit 1 |
 | PostgreSQL inaccesible | Pruebas de infraestructura fallan con exit 1 |
@@ -70,3 +70,16 @@ main con SONAR_ENABLED=true. No hacer Sonar obligatorio durante el diagnóstico.
 
 Mensaje de commit sugerido:
 `ci(backend): configurar validación, PostgreSQL aislado y Sonar opcional`
+
+## Corrección de la validación del título del PR
+
+La primera ejecución remota detectó que `--default-ignores=false` no es una opción
+de la CLI 21.2.3. La comprobación local inicial del título tipo merge fue insuficiente:
+comprobó un código de salida fallido, pero no distinguió un error de argumentos de
+un rechazo por las reglas. El commit sí pasó la validación remota.
+
+Se sustituyó esa opción por `--config ci/commitlint-pr.config.cjs`, que reutiliza las
+reglas comunes y establece `defaultIgnores: false` en el archivo de configuración.
+La verificación local ahora exige que un título válido pase y que los inválidos
+fallen por reglas identificables, sin errores de argumentos. La ejecución corregida
+en GitHub queda pendiente de publicar estos cambios.
