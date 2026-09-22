@@ -39,11 +39,16 @@ TEMPLATES = []
 DATABASES = {"default": {"ENGINE": "django.db.backends.dummy"}}
 if os.getenv("DATABASE_URL"):
     DATABASES["default"] = dj_database_url.parse(
-        os.environ["DATABASE_URL"], conn_max_age=60,
-        conn_health_checks=True, ssl_require=not DEBUG,
+        os.environ["DATABASE_URL"], 
+        conn_max_age=60,
+        conn_health_checks=True, 
+        ssl_require=not DEBUG,
     )
     if DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
-        raise ImproperlyConfigured("DATABASE_URL debe apuntar a PostgreSQL.")
+        raise ImproperlyConfigured(
+            "DATABASE_URL debe apuntar a PostgreSQL."
+        )
+    DATABASES["default"].setdefault("OPTIONS", {})
     DATABASES["default"]["OPTIONS"]["connect_timeout"] = 5
 
 LANGUAGE_CODE = "es-co"
