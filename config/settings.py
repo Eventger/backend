@@ -23,9 +23,13 @@ if render_host:
     ALLOWED_HOSTS.append(render_host)
 
 INSTALLED_APPS = [
-    "django.contrib.auth", "django.contrib.contenttypes",
-    "rest_framework", "corsheaders",
+    "django.contrib.auth", 
+    "django.contrib.contenttypes",
+    "rest_framework", 
+    "corsheaders",
+    "drf_spectacular",
 ]
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -33,9 +37,18 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
-TEMPLATES = []
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [],
+        },
+    },
+]
 DATABASES = {"default": {"ENGINE": "django.db.backends.dummy"}}
 if os.getenv("DATABASE_URL"):
     DATABASES["default"] = dj_database_url.parse(
@@ -58,10 +71,19 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = csv_env("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = csv_env("CSRF_TRUSTED_ORIGINS")
+
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Eventger API",
+    "DESCRIPTION": "API REST para la gestión de eventos de Eventger.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
+
 if os.getenv("RENDER") == "true":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
