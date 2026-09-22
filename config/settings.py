@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -28,6 +29,7 @@ INSTALLED_APPS = [
     "rest_framework", 
     "corsheaders",
     "drf_spectacular",
+    "apps.events",
 ]
 
 MIDDLEWARE = [
@@ -49,11 +51,20 @@ TEMPLATES = [
         },
     },
 ]
-DATABASES = {"default": {"ENGINE": "django.db.backends.dummy"}}
+DATABASES = {
+    "default": dj_database_url.config(
+        default=os.getenv("DATABASE_URL"),
+        conn_max_age=60,
+    )
+}
+
+if "test" in sys.argv:
+    DATABASES["default"]["CONN_MAX_AGE"] = 0
+
 if os.getenv("DATABASE_URL"):
     DATABASES["default"] = dj_database_url.parse(
         os.environ["DATABASE_URL"], 
-        conn_max_age=60,
+        conn_max_age=0,
         conn_health_checks=True, 
         ssl_require=not DEBUG,
     )
