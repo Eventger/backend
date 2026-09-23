@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.events.models import Event, EventType
@@ -190,4 +193,122 @@ class EventCreateViewTests(TestCase):
         self.assertEqual(
             Event.objects.count(),
             0,
+        )
+    
+    def test_get_events_returns_demo_user_events(self):
+        event_1 = Event.objects.create(
+            user=self.user,
+            name="Conferencia de tecnología",
+            type=self.event_type,
+            date=timezone.make_aware(
+                datetime(2026, 10, 15, 18, 30),
+            ),
+            location="Cali",
+        )
+
+        event_2 = Event.objects.create(
+            user=self.user,
+            name="Taller de innovación",
+            type=self.event_type,
+            date=timezone.make_aware(
+                datetime(2026, 10, 20, 10, 0),
+            ),
+            location="Bogotá",
+        )
+
+        response = self.client.get(
+            "/events/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        response_data = response.json()
+
+        self.assertTrue(
+            response_data["success"],
+        )
+
+        self.assertIn(
+            "data",
+            response_data,
+        )
+
+        self.assertEqual(
+            len(response_data["data"]),
+            2,
+        )
+
+        event_ids = [
+            event["id"]
+            for event in response_data["data"]
+        ]
+
+        self.assertIn(
+            event_1.id,
+            event_ids,
+        )
+
+        self.assertIn(
+            event_2.id,
+            event_ids,
+        )
+
+
+    def test_get_events_does_not_return_events_from_other_users(self):
+        other_user = User.objects.create_user(
+            username="other-user",
+            password="test-password",
+        )
+
+        demo_event = Event.objects.create(
+            user=self.user,
+            name="Evento de demo",
+            type=self.event_type,
+            date=timezone.make_aware(
+                datetime(2026, 10, 15, 18, 30),
+            ),
+            location="Cali",
+        )
+
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Evento de otro usuario",
+            type=self.event_type,
+            date=timezone.make_aware(
+                datetime(2026, 10, 20, 10, 0),
+            ),
+            location="Bogotá",
+        )
+
+        response = self.client.get(
+            "/events/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        response_data = response.json()
+
+        self.assertTrue(
+            response_data["success"],
+        )
+
+        event_ids = [
+            event["id"]
+            for event in response_data["data"]
+        ]
+
+        self.assertIn(
+            demo_event.id,
+            event_ids,
+        )
+
+        self.assertNotIn(
+            other_event.id,
+            event_ids,
         )
