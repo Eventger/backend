@@ -23,4 +23,5 @@ urlpatterns = [
         name="swagger-ui",
     ),
     path("", include("apps.events.urls")),
+    path("", include("apps.subtasks.urls")),
 ]
