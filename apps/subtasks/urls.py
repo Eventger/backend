@@ -1,8 +1,23 @@
-from django.urls import path
-from .views import SubtaskCreateView
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from .views import EventSubtaskView, SubtaskViewSet
+
+router = DefaultRouter()
+router.register(
+    "subtasks",
+    SubtaskViewSet,
+    basename="subtask",
+)
 
 urlpatterns = [
-    path("events/<int:event_id>/subtasks/", 
-    SubtaskCreateView.as_view(), 
-    name="subtask-create"),
+    path(
+        "",
+        include(router.urls),
+    ),
+    path(
+        "events/<int:event_id>/subtasks/",
+        EventSubtaskView.as_view(),
+        name="event-subtask-list-create",
+    ),
 ]

@@ -420,3 +420,183 @@ class SubtaskCreateViewTests(TestCase):
             response_data["data"],
             [],
         )
+
+    def test_get_subtask_returns_subtask(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Contratar sonido",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("4.50"),
+            details="Contactar proveedor.",
+        )
+
+        response = self.client.get(
+            f"/subtasks/{subtask.id}/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(
+            response.data["data"]["id"],
+            subtask.id,
+        )
+        self.assertEqual(
+            response.data["data"]["name"],
+            "Contratar sonido",
+        )
+
+    def test_get_subtask_returns_404_when_subtask_does_not_exist(self):
+        response = self.client.get("/subtasks/99999/")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_subtask_returns_404_for_subtask_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Otro evento",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Cali",
+        )
+
+        subtask = Subtask.objects.create(
+            event=other_event,
+            name="Subtarea protegida",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.get(
+            f"/subtasks/{subtask.id}/"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_subtask_updates_subtask(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Nombre original",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+            details="Detalles originales.",
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "name": "Nombre actualizado",
+                "estimated_hours": "5.50",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(
+            response.data["data"]["name"],
+            "Nombre actualizado",
+        )
+        self.assertEqual(
+            response.data["data"]["estimated_hours"],
+            "5.50",
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.name,
+            "Nombre actualizado",
+        )
+        self.assertEqual(
+            subtask.estimated_hours,
+            Decimal("5.50"),
+        )
+
+    def test_patch_subtask_rejects_invalid_estimated_hours(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "estimated_hours": "0",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.data["success"])
+        self.assertIn(
+            "estimated_hours",
+            response.data["errors"],
+        )
+
+    def test_put_subtask_updates_subtask(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Nombre original",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+            details="Detalles originales.",
+        )
+
+        new_target_date = timezone.now() + timezone.timedelta(days=3)
+
+        response = self.client.put(
+            f"/subtasks/{subtask.id}/",
+            {
+                "name": "Subtarea actualizada",
+                "target_date": new_target_date.isoformat(),
+                "estimated_hours": "6.00",
+                "details": "Nuevos detalles.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(
+            response.data["data"]["name"],
+            "Subtarea actualizada",
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.name,
+            "Subtarea actualizada",
+        )
+        self.assertEqual(
+            subtask.estimated_hours,
+            Decimal("6.00"),
+        )
+        self.assertEqual(
+            subtask.details,
+            "Nuevos detalles.",
+        )
+
+    def test_delete_subtask_deletes_subtask(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea para eliminar",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.delete(
+            f"/subtasks/{subtask.id}/"
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(
+            Subtask.objects.filter(id=subtask.id).exists()
+        )

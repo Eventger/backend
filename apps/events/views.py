@@ -1,5 +1,5 @@
 from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,15 +9,42 @@ from .serializers import EventSerializer, EventTypeSerializer
 from .services import create_event
 
 
-class EventCreateView(APIView):
+class EventViewSet(viewsets.ModelViewSet):
+    serializer_class = EventSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return Event.objects.filter(
+            user__username="demo",
+        ).order_by("-date")
+
+    @extend_schema(
+        responses={200: EventSerializer(many=True)},
+    )
+    def list(self, request, *args, **kwargs):
+        events = self.get_queryset()
+
+        serializer = self.get_serializer(
+            events,
+            many=True,
+        )
+
+        return Response(
+            {
+                "success": True,
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         request=EventSerializer,
         responses={201: EventSerializer},
     )
-    def post(self, request):
-        serializer = EventSerializer(data=request.data)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(
+            data=request.data,
+        )
 
         if not serializer.is_valid():
             return Response(
@@ -42,14 +69,12 @@ class EventCreateView(APIView):
         )
 
     @extend_schema(
-        responses={200: EventSerializer(many=True)},
+        responses={200: EventSerializer},
     )
-    def get(self, request):
-        events = Event.objects.filter(
-            user__username="demo"
-        ).order_by("-date")
+    def retrieve(self, request, *args, **kwargs):
+        event = self.get_object()
 
-        serializer = EventSerializer(events, many=True)
+        serializer = self.get_serializer(event)
 
         return Response(
             {
@@ -57,6 +82,79 @@ class EventCreateView(APIView):
                 "data": serializer.data,
             },
             status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=EventSerializer,
+        responses={200: EventSerializer},
+    )
+    def update(self, request, *args, **kwargs):
+        event = self.get_object()
+
+        serializer = self.get_serializer(
+            event,
+            data=request.data,
+        )
+
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        event = serializer.save()
+
+        return Response(
+            {
+                "success": True,
+                "message": "Evento actualizado correctamente.",
+                "data": self.get_serializer(event).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=EventSerializer,
+        responses={200: EventSerializer},
+    )
+    def partial_update(self, request, *args, **kwargs):
+        event = self.get_object()
+
+        serializer = self.get_serializer(
+            event,
+            data=request.data,
+            partial=True,
+        )
+
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        event = serializer.save()
+
+        return Response(
+            {
+                "success": True,
+                "message": "Evento actualizado correctamente.",
+                "data": EventSerializer(event).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        event = self.get_object()
+        event.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT,
         )
 
 
@@ -68,7 +166,11 @@ class EventTypeListView(APIView):
     )
     def get(self, request):
         event_types = EventType.objects.all().order_by("name")
-        serializer = EventTypeSerializer(event_types, many=True)
+
+        serializer = EventTypeSerializer(
+            event_types,
+            many=True,
+        )
 
         return Response(
             {
