@@ -2,6 +2,7 @@ from datetime import datetime
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.events.models import Event, EventType
 from apps.events.services import create_event
@@ -23,7 +24,9 @@ class CreateEventServiceTests(TestCase):
         validated_data = {
             "name": "Conferencia de tecnología",
             "type": self.event_type,
-            "date": datetime(2026, 10, 15, 18, 30),
+            "date": timezone.make_aware(
+                datetime(2026, 10, 15, 18, 30),
+            ),
             "location": "Cali",
         }
 
@@ -49,7 +52,9 @@ class CreateEventServiceTests(TestCase):
         validated_data = {
             "name": "Evento de prueba",
             "type": self.event_type,
-            "date": datetime(2026, 11, 1, 10, 0),
+            "date": timezone.make_aware(
+                datetime(2026, 11, 1, 10, 0),
+            ),
             "location": "Bogotá",
         }
 
@@ -63,7 +68,9 @@ class CreateEventServiceTests(TestCase):
         validated_data = {
             "name": "Evento persistente",
             "type": self.event_type,
-            "date": datetime(2026, 12, 5, 14, 0),
+            "date": timezone.make_aware(
+                datetime(2026, 12, 5, 14, 0),
+            ),
             "location": "Medellín",
         }
 
@@ -83,7 +90,9 @@ class CreateEventServiceTests(TestCase):
         validated_data = {
             "name": "Evento sin usuario",
             "type": self.event_type,
-            "date": datetime(2026, 12, 10, 10, 0),
+            "date": timezone.make_aware(
+                datetime(2026, 12, 10, 10, 0),
+            ),
             "location": "Cali",
         }
 

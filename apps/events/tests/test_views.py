@@ -312,3 +312,172 @@ class EventCreateViewTests(TestCase):
             other_event.id,
             event_ids,
         )
+
+    def test_get_event_returns_event(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Conferencia",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        response = self.client.get(f"/events/{event.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(response.data["data"]["id"], event.id)
+        self.assertEqual(response.data["data"]["name"], "Conferencia")
+
+    def test_get_event_returns_404_when_event_does_not_exist(self):
+        response = self.client.get("/events/99999/")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_event_returns_404_for_event_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+
+        event = Event.objects.create(
+            user=other_user,
+            name="Evento privado",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Cali",
+        )
+
+        response = self.client.get(f"/events/{event.id}/")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_event_updates_event(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Nombre original",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        response = self.client.patch(
+            f"/events/{event.id}/",
+            {
+                "name": "Nombre actualizado",
+                "location": "Cali",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(
+            response.data["data"]["name"],
+            "Nombre actualizado",
+        )
+        self.assertEqual(
+            response.data["data"]["location"],
+            "Cali",
+        )
+
+        event.refresh_from_db()
+
+        self.assertEqual(event.name, "Nombre actualizado")
+        self.assertEqual(event.location, "Cali")
+
+    def test_patch_event_rejects_blank_name(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento original",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        response = self.client.patch(
+            f"/events/{event.id}/",
+            {
+                "name": "   ",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.data["success"])
+        self.assertIn("name", response.data["errors"])
+
+    def test_put_event_updates_event(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento original",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        new_date = timezone.now() + timezone.timedelta(days=5)
+
+        response = self.client.put(
+            f"/events/{event.id}/",
+            {
+                "name": "Evento actualizado",
+                "type": self.event_type.id,
+                "date": new_date.isoformat(),
+                "location": "Medellín",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(
+            response.data["data"]["name"],
+            "Evento actualizado",
+        )
+
+        event.refresh_from_db()
+
+        self.assertEqual(event.name, "Evento actualizado")
+        self.assertEqual(event.location, "Medellín")
+
+    def test_delete_event_deletes_event(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento para eliminar",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        response = self.client.delete(
+            f"/events/{event.id}/",
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(
+            Event.objects.filter(id=event.id).exists()
+        )
+
+    def test_delete_event_does_not_delete_event_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+
+        event = Event.objects.create(
+            user=other_user,
+            name="Evento protegido",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Cali",
+        )
+
+        response = self.client.delete(
+            f"/events/{event.id}/",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            Event.objects.filter(id=event.id).exists()
+        )

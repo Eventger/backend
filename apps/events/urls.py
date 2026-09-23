@@ -1,7 +1,24 @@
-from django.urls import path
-from .views import EventCreateView, EventTypeListView
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from .views import EventTypeListView, EventViewSet
+
+
+router = DefaultRouter()
+router.register(
+    "events",
+    EventViewSet,
+    basename="event",
+)
 
 urlpatterns = [
-    path("events/", EventCreateView.as_view(), name="event-create"),
-    path("event-types/", EventTypeListView.as_view(), name="event-type-list"),
+    path(
+        "",
+        include(router.urls),
+    ),
+    path(
+        "event-types/",
+        EventTypeListView.as_view(),
+        name="event-type-list",
+    ),
 ]
