@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -257,4 +258,165 @@ class SubtaskCreateViewTests(TestCase):
         self.assertEqual(
             Subtask.objects.count(),
             0,
+        )
+
+    def test_get_subtasks_returns_event_subtasks(self):
+        subtask_1 = Subtask.objects.create(
+            event=self.event,
+            name="Confirmar proveedor de sonido",
+            target_date=timezone.make_aware(
+                datetime(2026, 10, 20, 14, 0),
+            ),
+            estimated_hours=Decimal("2.50"),
+            details="Contactar al proveedor.",
+        )
+
+        subtask_2 = Subtask.objects.create(
+            event=self.event,
+            name="Reservar lugar",
+            target_date=timezone.make_aware(
+                datetime(2026, 10, 21, 10, 0),
+            ),
+            estimated_hours=Decimal("3.00"),
+        )
+
+        response = self.client.get(
+            f"/events/{self.event.id}/subtasks/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        response_data = response.json()
+
+        self.assertTrue(
+            response_data["success"],
+        )
+
+        self.assertIn(
+            "data",
+            response_data,
+        )
+
+        self.assertEqual(
+            len(response_data["data"]),
+            2,
+        )
+
+        subtask_ids = [
+            subtask["id"]
+            for subtask in response_data["data"]
+        ]
+
+        self.assertIn(
+            subtask_1.id,
+            subtask_ids,
+        )
+
+        self.assertIn(
+            subtask_2.id,
+            subtask_ids,
+        )
+
+    def test_get_subtasks_does_not_return_subtasks_from_other_events(self):
+        other_event = Event.objects.create(
+            user=self.user,
+            name="Otro evento",
+            type=self.event_type,
+            date=timezone.make_aware(
+                datetime(2026, 11, 15, 18, 30),
+            ),
+            location="Bogotá",
+        )
+
+        event_subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea del evento principal",
+            target_date=timezone.make_aware(
+                datetime(2026, 10, 20, 14, 0),
+            ),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        other_subtask = Subtask.objects.create(
+            event=other_event,
+            name="Subtarea de otro evento",
+            target_date=timezone.make_aware(
+                datetime(2026, 11, 20, 14, 0),
+            ),
+            estimated_hours=Decimal("4.00"),
+        )
+
+        response = self.client.get(
+            f"/events/{self.event.id}/subtasks/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        response_data = response.json()
+
+        self.assertTrue(
+            response_data["success"],
+        )
+
+        subtask_ids = [
+            subtask["id"]
+            for subtask in response_data["data"]
+        ]
+
+        self.assertIn(
+            event_subtask.id,
+            subtask_ids,
+        )
+
+        self.assertNotIn(
+            other_subtask.id,
+            subtask_ids,
+        )
+
+    def test_get_subtasks_returns_404_when_event_does_not_exist(self):
+        response = self.client.get(
+            "/events/999999/subtasks/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+        response_data = response.json()
+
+        self.assertFalse(
+            response_data["success"],
+        )
+
+        self.assertEqual(
+            response_data["message"],
+            "El evento no existe.",
+        )
+
+    def test_get_subtasks_returns_empty_list_when_event_has_no_subtasks(self):
+        response = self.client.get(
+            f"/events/{self.event.id}/subtasks/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        response_data = response.json()
+
+        self.assertTrue(
+            response_data["success"],
+        )
+
+        self.assertEqual(
+            response_data["data"],
+            [],
         )

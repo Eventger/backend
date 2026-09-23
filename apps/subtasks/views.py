@@ -52,3 +52,33 @@ class SubtaskCreateView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    @extend_schema(
+        responses={200: SubtaskSerializer(many=True)},
+    )
+    def get(self, request, event_id):
+        try:
+            event = Event.objects.get(
+                pk=event_id,
+                user__username="demo",
+            )
+        except Event.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "message": "El evento no existe.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        subtasks = event.subtasks.all().order_by("-target_date")
+
+        serializer = SubtaskSerializer(subtasks, many=True)
+
+        return Response(
+            {
+                "success": True,
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
