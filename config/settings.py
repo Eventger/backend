@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "drf_spectacular",
     "apps.events",
+    "apps.subtasks",
 ]
 
 MIDDLEWARE = [
