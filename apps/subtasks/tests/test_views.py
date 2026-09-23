@@ -260,6 +260,20 @@ class SubtaskCreateViewTests(TestCase):
             0,
         )
 
+    def test_create_subtask_without_event_route_returns_405(self):
+        response = self.client.post(
+            "/subtasks/",
+            {
+                "name": "Subtarea sin evento",
+                "target_date": "2026-10-20T08:00:00-05:00",
+                "estimated_hours": "2.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(Subtask.objects.count(), 0)
+
     def test_get_subtasks_returns_event_subtasks(self):
         subtask_1 = Subtask.objects.create(
             event=self.event,
