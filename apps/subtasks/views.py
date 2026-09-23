@@ -11,7 +11,7 @@ from .serializers import SubtaskSerializer
 from .services import create_subtask
 
 
-class SubtaskViewSet(viewsets.ModelViewSet):
+class SubtaskViewSet(viewsets.GenericViewSet):
     serializer_class = SubtaskSerializer
     permission_classes = [AllowAny]
 
