@@ -162,3 +162,33 @@ class EventSerializerTests(TestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertIn("date", serializer.errors)
+
+    def test_text_fields_accept_exactly_255_characters(self):
+        for field in ("name", "location", "contact"):
+            with self.subTest(field=field):
+                data = self.data.copy()
+                data[field] = "a" * 255
+
+                serializer = EventSerializer(data=data)
+
+                self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_text_fields_reject_more_than_255_characters(self):
+        for field in ("name", "location", "contact"):
+            with self.subTest(field=field):
+                data = self.data.copy()
+                data[field] = "a" * 256
+
+                serializer = EventSerializer(data=data)
+
+                self.assertFalse(serializer.is_valid())
+                self.assertIn(field, serializer.errors)
+
+    def test_event_date_rejects_invalid_format(self):
+        data = self.data.copy()
+        data["date"] = "fecha-invalida"
+
+        serializer = EventSerializer(data=data)
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("date", serializer.errors)
