@@ -178,7 +178,7 @@ class EventTypeListView(APIView):
         responses={200: EventTypeListResponseSerializer},
     )
     def get(self, request):
-        event_types = EventType.objects.all().order_by("name")
+        event_types = EventType.objects.all().order_by("id")
 
         serializer = EventTypeSerializer(
             event_types,
