@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -32,6 +32,7 @@ class SubtaskCreateViewTests(TestCase):
                 datetime(2026, 10, 15, 18, 30),
             ),
             location="Cali",
+            contact="3001234567",
         )
 
     def test_create_subtask_returns_201(self):
@@ -676,3 +677,356 @@ class SubtaskCreateViewTests(TestCase):
         self.assertFalse(
             Subtask.objects.filter(id=subtask.id).exists()
         )
+
+    def test_today_returns_empty_groups(self):
+        response = self.client.get("/hoy/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "success": True,
+                "data": {
+                    "overdue": [],
+                    "today": [],
+                    "upcoming": [],
+                    "completed": [],
+                },
+            },
+        )    
+
+    def test_today_returns_overdue_subtasks(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        subtask = Subtask.objects.create(
+            event=event,
+            name="Tarea vencida",
+            target_date=timezone.now() - timedelta(days=1),
+            estimated_hours=2,
+        )
+
+        response = self.client.get("/hoy/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()["data"]
+
+        self.assertEqual(len(data["overdue"]), 1)
+        self.assertEqual(data["overdue"][0]["id"], subtask.id)
+        self.assertEqual(data["today"], [])
+        self.assertEqual(data["upcoming"], [])
+        self.assertEqual(data["completed"], [])
+
+    def test_today_returns_today_subtasks(self):
+        today_start = timezone.localtime().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        subtask = Subtask.objects.create(
+            event=event,
+            name="Tarea de hoy",
+            target_date=today_start + timedelta(hours=10),
+            estimated_hours=3,
+        )
+
+        response = self.client.get("/hoy/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()["data"]
+
+        self.assertEqual(data["today"][0]["id"], subtask.id)
+        self.assertEqual(data["overdue"], [])
+        self.assertEqual(data["upcoming"], [])
+        self.assertEqual(data["completed"], [])
+
+    def test_today_returns_upcoming_subtasks(self):
+        today_start = timezone.localtime().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        subtask = Subtask.objects.create(
+            event=event,
+            name="Tarea futura",
+            target_date=today_start + timedelta(days=2),
+            estimated_hours=4,
+        )
+
+        response = self.client.get("/hoy/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()["data"]
+
+        self.assertEqual(data["upcoming"][0]["id"], subtask.id)
+        self.assertEqual(data["overdue"], [])
+        self.assertEqual(data["today"], [])
+        self.assertEqual(data["completed"], [])
+
+    def test_today_returns_completed_subtasks_separately(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        subtask = Subtask.objects.create(
+            event=event,
+            name="Tarea completada",
+            target_date=timezone.now() - timedelta(days=1),
+            estimated_hours=2,
+            state=Subtask.State.COMPLETED,
+        )
+
+        response = self.client.get("/hoy/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()["data"]
+
+        self.assertEqual(data["completed"][0]["id"], subtask.id)
+        self.assertEqual(data["overdue"], [])
+        self.assertEqual(data["today"], [])
+        self.assertEqual(data["upcoming"], [])
+
+    def test_today_excludes_subtasks_from_other_users(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+
+        own_event = Event.objects.create(
+            user=self.user,
+            name="Mi evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Otro evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        own_subtask = Subtask.objects.create(
+            event=own_event,
+            name="Mi tarea",
+            target_date=timezone.now(),
+            estimated_hours=2,
+        )
+
+        Subtask.objects.create(
+            event=other_event,
+            name="Tarea ajena",
+            target_date=timezone.now(),
+            estimated_hours=1,
+        )
+
+        response = self.client.get("/hoy/")
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()["data"]
+
+        ids = [
+            subtask["id"]
+            for group in data.values()
+            for subtask in group
+        ]
+
+        self.assertIn(own_subtask.id, ids)
+        self.assertEqual(len(ids), 1)
+
+    def test_today_orders_subtasks_by_target_date(self):
+        today_start = timezone.localtime().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        first = Subtask.objects.create(
+            event=event,
+            name="Primera",
+            target_date=today_start + timedelta(hours=8),
+            estimated_hours=1,
+        )
+
+        second = Subtask.objects.create(
+            event=event,
+            name="Segunda",
+            target_date=today_start + timedelta(hours=12),
+            estimated_hours=1,
+        )
+
+        third = Subtask.objects.create(
+            event=event,
+            name="Tercera",
+            target_date=today_start + timedelta(hours=18),
+            estimated_hours=1,
+        )
+
+        response = self.client.get("/hoy/")
+
+        ids = [
+            item["id"]
+            for item in response.json()["data"]["today"]
+        ]
+
+        self.assertEqual(
+            ids,
+            [first.id, second.id, third.id],
+        )
+
+    def test_today_orders_same_date_by_estimated_hours(self):
+        today_start = timezone.localtime().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        longer = Subtask.objects.create(
+            event=event,
+            name="Más horas",
+            target_date=today_start + timedelta(hours=10),
+            estimated_hours=5,
+        )
+
+        shorter = Subtask.objects.create(
+            event=event,
+            name="Menos horas",
+            target_date=today_start + timedelta(hours=10),
+            estimated_hours=2,
+        )
+
+        response = self.client.get("/hoy/")
+
+        ids = [
+            item["id"]
+            for item in response.json()["data"]["today"]
+        ]
+
+        self.assertEqual(
+            ids,
+            [shorter.id, longer.id],
+        )
+
+    def test_today_includes_subtask_at_start_of_day(self):
+        today_start = timezone.localtime().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        subtask = Subtask.objects.create(
+            event=event,
+            name="Inicio del día",
+            target_date=today_start,
+            estimated_hours=1,
+        )
+
+        response = self.client.get("/hoy/")
+
+        data = response.json()["data"]
+
+        self.assertEqual(data["today"][0]["id"], subtask.id)
+
+    def test_today_puts_subtask_at_start_of_tomorrow_in_upcoming(self):
+        today_start = timezone.localtime().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        tomorrow_start = today_start + timedelta(days=1)
+
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        subtask = Subtask.objects.create(
+            event=event,
+            name="Inicio de mañana",
+            target_date=tomorrow_start,
+            estimated_hours=1,
+        )
+
+        response = self.client.get("/hoy/")
+
+        data = response.json()["data"]
+
+        self.assertEqual(data["upcoming"][0]["id"], subtask.id)

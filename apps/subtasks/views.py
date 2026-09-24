@@ -3,6 +3,7 @@ from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.contrib.auth.models import User
 
 from apps.events.models import Event
 from config.api_serializers import (
@@ -20,8 +21,9 @@ from .serializers import (
     SubtaskResponseSerializer,
     SubtaskSerializer,
     SubtaskUpdateSerializer,
+    TodayResponseSerializer,
 )
-from .services import create_subtask
+from .services import create_subtask, get_today_subtasks
 
 
 class SubtaskViewSet(viewsets.GenericViewSet):
@@ -233,4 +235,43 @@ class EventSubtaskView(APIView):
                 "data": SubtaskSerializer(subtask).data,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class TodaySubtaskView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses={200: TodayResponseSerializer},
+    )
+    def get(self, request):
+        user = User.objects.get(username="demo")
+
+        subtasks = get_today_subtasks(
+            user=user,
+        )
+
+        return Response(
+            {
+                "success": True,
+                "data": {
+                    "overdue": SubtaskSerializer(
+                        subtasks["overdue"],
+                        many=True,
+                    ).data,
+                    "today": SubtaskSerializer(
+                        subtasks["today"],
+                        many=True,
+                    ).data,
+                    "upcoming": SubtaskSerializer(
+                        subtasks["upcoming"],
+                        many=True,
+                    ).data,
+                    "completed": SubtaskSerializer(
+                        subtasks["completed"],
+                        many=True,
+                    ).data,
+                },
+            },
+            status=status.HTTP_200_OK,
         )
