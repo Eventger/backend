@@ -1,11 +1,23 @@
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.api_serializers import (
+    MessageErrorResponseSerializer,
+    ValidationErrorResponseSerializer,
+)
+from config.openapi_examples import EVENT_CREATE_EXAMPLES
+
 from .models import Event, EventType
-from .serializers import EventSerializer, EventTypeSerializer
+from .serializers import (
+    EventListResponseSerializer,
+    EventResponseSerializer,
+    EventSerializer,
+    EventTypeListResponseSerializer,
+    EventTypeSerializer,
+)
 from .services import create_event
 
 
@@ -19,7 +31,7 @@ class EventViewSet(viewsets.ModelViewSet):
         ).order_by("-date")
 
     @extend_schema(
-        responses={200: EventSerializer(many=True)},
+        responses={200: EventListResponseSerializer},
     )
     def list(self, request, *args, **kwargs):
         events = self.get_queryset()
@@ -39,21 +51,19 @@ class EventViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         request=EventSerializer,
-        responses={201: EventSerializer},
+        responses={
+            201: EventResponseSerializer,
+            400: ValidationErrorResponseSerializer,
+            503: MessageErrorResponseSerializer,
+        },
+        examples=EVENT_CREATE_EXAMPLES,
     )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(
             data=request.data,
         )
 
-        if not serializer.is_valid():
-            return Response(
-                {
-                    "success": False,
-                    "errors": serializer.errors,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer.is_valid(raise_exception=True)
 
         event = create_event(
             validated_data=serializer.validated_data,
@@ -69,7 +79,10 @@ class EventViewSet(viewsets.ModelViewSet):
         )
 
     @extend_schema(
-        responses={200: EventSerializer},
+        responses={
+            200: EventResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
     )
     def retrieve(self, request, *args, **kwargs):
         event = self.get_object()
@@ -86,7 +99,11 @@ class EventViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         request=EventSerializer,
-        responses={200: EventSerializer},
+        responses={
+            200: EventResponseSerializer,
+            400: ValidationErrorResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
     )
     def update(self, request, *args, **kwargs):
         event = self.get_object()
@@ -96,14 +113,7 @@ class EventViewSet(viewsets.ModelViewSet):
             data=request.data,
         )
 
-        if not serializer.is_valid():
-            return Response(
-                {
-                    "success": False,
-                    "errors": serializer.errors,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer.is_valid(raise_exception=True)
 
         event = serializer.save()
 
@@ -118,7 +128,11 @@ class EventViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         request=EventSerializer,
-        responses={200: EventSerializer},
+        responses={
+            200: EventResponseSerializer,
+            400: ValidationErrorResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
     )
     def partial_update(self, request, *args, **kwargs):
         event = self.get_object()
@@ -129,14 +143,7 @@ class EventViewSet(viewsets.ModelViewSet):
             partial=True,
         )
 
-        if not serializer.is_valid():
-            return Response(
-                {
-                    "success": False,
-                    "errors": serializer.errors,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer.is_valid(raise_exception=True)
 
         event = serializer.save()
 
@@ -149,6 +156,12 @@ class EventViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        responses={
+            204: OpenApiResponse(description="Evento eliminado correctamente."),
+            404: MessageErrorResponseSerializer,
+        },
+    )
     def destroy(self, request, *args, **kwargs):
         event = self.get_object()
         event.delete()
@@ -162,7 +175,7 @@ class EventTypeListView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        responses={200: EventTypeSerializer(many=True)},
+        responses={200: EventTypeListResponseSerializer},
     )
     def get(self, request):
         event_types = EventType.objects.all().order_by("name")

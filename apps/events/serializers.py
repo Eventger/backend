@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 from .models import Event, EventType
 
@@ -43,3 +44,20 @@ class EventSerializer(serializers.ModelSerializer):
                 "La ubicación del evento no puede estar vacía."
             )
         return value.strip()
+
+
+class EventResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    message = serializers.CharField(required=False)
+    data = EventSerializer()
+
+
+@extend_schema_serializer(many=False)
+class EventListResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    data = EventSerializer(many=True)
+
+
+class EventTypeListResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    data = EventTypeSerializer(many=True)

@@ -113,6 +113,11 @@ class SubtaskCreateViewTests(TestCase):
             response_data["success"],
         )
 
+        self.assertEqual(
+            response_data["message"],
+            "Los datos enviados no son válidos.",
+        )
+
         self.assertIn(
             "errors",
             response_data,
@@ -272,6 +277,15 @@ class SubtaskCreateViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 405)
+        self.assertEqual(
+            response.json(),
+            {
+                "success": False,
+                "message": (
+                    "El método HTTP no está permitido para este endpoint."
+                ),
+            },
+        )
         self.assertEqual(Subtask.objects.count(), 0)
 
     def test_get_subtasks_returns_event_subtasks(self):
@@ -463,6 +477,13 @@ class SubtaskCreateViewTests(TestCase):
         response = self.client.get("/subtasks/99999/")
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.json(),
+            {
+                "success": False,
+                "message": "El recurso solicitado no existe.",
+            },
+        )
 
     def test_get_subtask_returns_404_for_subtask_from_other_user(self):
         other_user = User.objects.create_user(
@@ -553,6 +574,47 @@ class SubtaskCreateViewTests(TestCase):
             "estimated_hours",
             response.data["errors"],
         )
+
+    def test_patch_subtask_updates_state(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea pendiente",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {"state": Subtask.State.COMPLETED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["data"]["state"],
+            Subtask.State.COMPLETED,
+        )
+
+        subtask.refresh_from_db()
+        self.assertEqual(subtask.state, Subtask.State.COMPLETED)
+
+    def test_patch_subtask_rejects_invalid_state(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea pendiente",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {"state": "invalid"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.data["success"])
+        self.assertIn("state", response.data["errors"])
 
     def test_put_subtask_updates_subtask(self):
         subtask = Subtask.objects.create(

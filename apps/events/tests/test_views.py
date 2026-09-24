@@ -103,6 +103,11 @@ class EventCreateViewTests(TestCase):
             response_data["success"]
         )
 
+        self.assertEqual(
+            response_data["message"],
+            "Los datos enviados no son válidos.",
+        )
+
         self.assertIn(
             "errors",
             response_data,
@@ -132,6 +137,32 @@ class EventCreateViewTests(TestCase):
             Event.objects.count(),
             0,
         )
+
+    def test_create_event_returns_503_when_demo_user_is_missing(self):
+        self.user.delete()
+
+        response = self.client.post(
+            "/events/",
+            {
+                "name": "Evento sin usuario demo",
+                "type": self.event_type.id,
+                "date": "2026-10-15T18:30:00-05:00",
+                "location": "Cali",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json(),
+            {
+                "success": False,
+                "message": (
+                    "El servicio no está configurado para crear eventos."
+                ),
+            },
+        )
+        self.assertEqual(Event.objects.count(), 0)
 
     def test_create_event_rejects_blank_name(self):
         data = {
@@ -333,6 +364,13 @@ class EventCreateViewTests(TestCase):
         response = self.client.get("/events/99999/")
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.json(),
+            {
+                "success": False,
+                "message": "El recurso solicitado no existe.",
+            },
+        )
 
     def test_get_event_returns_404_for_event_from_other_user(self):
         other_user = User.objects.create_user(
