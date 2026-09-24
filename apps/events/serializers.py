@@ -1,5 +1,7 @@
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
+from django.utils import timezone
+
 from .models import Event, EventType
 
 class EventTypeSerializer(serializers.ModelSerializer):
@@ -21,6 +23,7 @@ class EventSerializer(serializers.ModelSerializer):
             "type",
             "date",
             "location",
+            "contact",
             "created_at",
             "updated_at",
         ]
@@ -44,6 +47,23 @@ class EventSerializer(serializers.ModelSerializer):
                 "La ubicación del evento no puede estar vacía."
             )
         return value.strip()
+
+    def validate_date(self, value):
+        if value <= timezone.now():
+            raise serializers.ValidationError(
+                "La fecha del evento no puede ser anterior a la fecha actual."
+            )
+        return value
+
+    def validate_contact(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "El contacto del evento no puede estar vacío."
+            )
+
+        return value
 
 
 class EventResponseSerializer(serializers.Serializer):

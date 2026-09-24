@@ -30,6 +30,11 @@ class Event(models.Model):
     )
     date = models.DateTimeField()
     location = models.CharField(max_length=255)
+    contact = models.CharField(
+        max_length=255,
+        blank=False,
+        null=False,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
