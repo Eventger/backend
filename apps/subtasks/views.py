@@ -1,13 +1,26 @@
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.events.models import Event
+from config.api_serializers import (
+    MessageErrorResponseSerializer,
+    ValidationErrorResponseSerializer,
+)
+from config.openapi_examples import (
+    SUBTASK_CREATE_EXAMPLES,
+    SUBTASK_STATE_UPDATE_EXAMPLES,
+)
 
 from .models import Subtask
-from .serializers import SubtaskSerializer
+from .serializers import (
+    SubtaskListResponseSerializer,
+    SubtaskResponseSerializer,
+    SubtaskSerializer,
+    SubtaskUpdateSerializer,
+)
 from .services import create_subtask
 
 
@@ -20,8 +33,14 @@ class SubtaskViewSet(viewsets.GenericViewSet):
             event__user__username="demo",
         ).order_by("target_date")
 
+    def get_serializer_class(self):
+        if self.action in {"update", "partial_update"}:
+            return SubtaskUpdateSerializer
+
+        return SubtaskSerializer
+
     @extend_schema(
-        responses={200: SubtaskSerializer(many=True)},
+        responses={200: SubtaskListResponseSerializer},
     )
     def list(self, request, *args, **kwargs):
         subtasks = self.get_queryset()
@@ -40,7 +59,10 @@ class SubtaskViewSet(viewsets.GenericViewSet):
         )
 
     @extend_schema(
-        responses={200: SubtaskSerializer},
+        responses={
+            200: SubtaskResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
     )
     def retrieve(self, request, *args, **kwargs):
         subtask = self.get_object()
@@ -56,8 +78,12 @@ class SubtaskViewSet(viewsets.GenericViewSet):
         )
 
     @extend_schema(
-        request=SubtaskSerializer,
-        responses={200: SubtaskSerializer},
+        request=SubtaskUpdateSerializer,
+        responses={
+            200: SubtaskResponseSerializer,
+            400: ValidationErrorResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
     )
     def update(self, request, *args, **kwargs):
         subtask = self.get_object()
@@ -67,14 +93,7 @@ class SubtaskViewSet(viewsets.GenericViewSet):
             data=request.data,
         )
 
-        if not serializer.is_valid():
-            return Response(
-                {
-                    "success": False,
-                    "errors": serializer.errors,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer.is_valid(raise_exception=True)
 
         subtask = serializer.save()
 
@@ -88,8 +107,13 @@ class SubtaskViewSet(viewsets.GenericViewSet):
         )
 
     @extend_schema(
-        request=SubtaskSerializer,
-        responses={200: SubtaskSerializer},
+        request=SubtaskUpdateSerializer,
+        responses={
+            200: SubtaskResponseSerializer,
+            400: ValidationErrorResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
+        examples=SUBTASK_STATE_UPDATE_EXAMPLES,
     )
     def partial_update(self, request, *args, **kwargs):
         subtask = self.get_object()
@@ -100,14 +124,7 @@ class SubtaskViewSet(viewsets.GenericViewSet):
             partial=True,
         )
 
-        if not serializer.is_valid():
-            return Response(
-                {
-                    "success": False,
-                    "errors": serializer.errors,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer.is_valid(raise_exception=True)
 
         subtask = serializer.save()
 
@@ -120,6 +137,12 @@ class SubtaskViewSet(viewsets.GenericViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        responses={
+            204: OpenApiResponse(description="Subtarea eliminada correctamente."),
+            404: MessageErrorResponseSerializer,
+        },
+    )
     def destroy(self, request, *args, **kwargs):
         subtask = self.get_object()
         subtask.delete()
@@ -133,7 +156,10 @@ class EventSubtaskView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        responses={200: SubtaskSerializer(many=True)},
+        responses={
+            200: SubtaskListResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
     )
     def get(self, request, event_id):
         event = Event.objects.filter(
@@ -167,7 +193,12 @@ class EventSubtaskView(APIView):
 
     @extend_schema(
         request=SubtaskSerializer,
-        responses={201: SubtaskSerializer},
+        responses={
+            201: SubtaskResponseSerializer,
+            400: ValidationErrorResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
+        examples=SUBTASK_CREATE_EXAMPLES,
     )
     def post(self, request, event_id):
         event = Event.objects.filter(
@@ -188,14 +219,7 @@ class EventSubtaskView(APIView):
             data=request.data,
         )
 
-        if not serializer.is_valid():
-            return Response(
-                {
-                    "success": False,
-                    "errors": serializer.errors,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer.is_valid(raise_exception=True)
 
         subtask = create_subtask(
             event=event,

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 from .models import Subtask
 
@@ -36,3 +37,25 @@ class SubtaskSerializer(serializers.ModelSerializer):
                 "Las horas estimadas deben ser mayores que 0."
             )
         return value
+
+
+class SubtaskUpdateSerializer(SubtaskSerializer):
+    class Meta(SubtaskSerializer.Meta):
+        read_only_fields = [
+            "id",
+            "event",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class SubtaskResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    message = serializers.CharField(required=False)
+    data = SubtaskSerializer()
+
+
+@extend_schema_serializer(many=False)
+class SubtaskListResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    data = SubtaskSerializer(many=True)

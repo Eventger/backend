@@ -1,16 +1,26 @@
-from django.http import JsonResponse
 from django.urls import path, include
+from drf_spectacular.utils import extend_schema
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from django.views.decorators.http import require_safe
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
-@require_safe
+from config.api_serializers import HealthResponseSerializer, IndexResponseSerializer
+
+
+@extend_schema(responses={200: HealthResponseSerializer})
+@api_view(["GET"])
+@permission_classes([AllowAny])
 def health(request):
     # Verifica el proceso HTTP, no la disponibilidad de PostgreSQL.
-    return JsonResponse({"status": "ok", "service": "eventger-backend"})
+    return Response({"status": "ok", "service": "eventger-backend"})
 
-@require_safe
+
+@extend_schema(responses={200: IndexResponseSerializer})
+@api_view(["GET"])
+@permission_classes([AllowAny])
 def index(request):
-    return JsonResponse({"service": "Eventger API", "health": "/health/"})
+    return Response({"service": "Eventger API", "health": "/health/"})
 
 urlpatterns = [
     path("", index),

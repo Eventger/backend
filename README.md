@@ -1,89 +1,144 @@
 # Eventger backend
 
-Arranque de Django y Django REST Framework para Render. Expone `/` y `/health/`.
-El health check comprueba que el servidor responde; no verifica Supabase.
-Todavía no hay CRUD de eventos, login ni modelos del dominio.
+API REST construida con Django y Django REST Framework para gestionar eventos y
+subtareas logísticas. Durante Sprint 1 utiliza el usuario compartido `demo`; la
+autenticación y el aislamiento por usuario corresponden a un sprint posterior.
+
+## Requisitos
+
+- Python 3.12.
+- PostgreSQL.
+- Una base de datos disponible mediante `DATABASE_URL`.
 
 ## Desarrollo local
 
-Requiere Python 3.12.
+Crear el entorno e instalar dependencias:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
 ```
 
-Copia la clave generada en SECRET_KEY dentro de `.env`.
+Crear `.env` con los valores locales:
+
+```dotenv
+SECRET_KEY=una-clave-local-larga-y-aleatoria
+DEBUG=true
+DATABASE_URL=postgresql://usuario:contrasena@127.0.0.1:5432/eventger
+ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+```
+
+Preparar la base de datos:
+
+```bash
+python manage.py migrate
+python manage.py bootstrap_demo
+```
+
+`bootstrap_demo` crea de forma idempotente el usuario `demo` y el catálogo inicial de
+tipos de evento. Puede ejecutarse varias veces sin duplicar registros.
+
+Comprobar y ejecutar:
 
 ```bash
 python manage.py check
-python manage.py test config
+python manage.py test
 python manage.py runserver
 ```
 
-Abre http://127.0.0.1:8000/health/.
+Direcciones locales:
 
-## Render
+- API: http://127.0.0.1:8000/
+- Health check: http://127.0.0.1:8000/health/
+- Swagger: http://127.0.0.1:8000/api/docs/
+- Esquema OpenAPI: http://127.0.0.1:8000/api/schema/
 
-En Render selecciona **New > Blueprint**, conecta `Eventger/backend`, selecciona
-`main` y aplica `render.yaml`. El archivo crea únicamente el servicio web Free;
-no crea una base de datos Render. SECRET_KEY se genera automáticamente.
-La URL real aparece en el panel cuando termina el despliegue.
+## Endpoints
 
-También puedes crear un Web Service manual con:
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| GET, POST | `/events/` | Listar y crear eventos del usuario demo |
+| GET, PUT, PATCH, DELETE | `/events/{id}/` | Consultar, actualizar o eliminar un evento |
+| GET | `/event-types/` | Listar tipos de evento |
+| GET, POST | `/events/{event_id}/subtasks/` | Listar o crear subtareas dentro de un evento |
+| GET | `/subtasks/` | Listar subtareas del usuario demo |
+| GET, PUT, PATCH, DELETE | `/subtasks/{id}/` | Consultar, actualizar o eliminar una subtarea |
 
-- Runtime: Python 3.
-- Branch: main. Root Directory: vacío.
-- Build: `pip install -r requirements.txt`.
-- Start: `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --access-logfile - --error-logfile -`.
-- Health check: `/health/`.
-- Variables: SECRET_KEY (generada), DEBUG=false.
-- El hostname de Render se agrega automáticamente a ALLOWED_HOSTS.
+`POST /subtasks/` no está habilitado. Toda subtarea debe crearse mediante la ruta
+del evento al que pertenece.
 
-El servicio Free puede suspenderse por inactividad y tardar en responder al despertar.
+## Contrato de respuestas
 
-## Supabase
+Las respuestas exitosas utilizan `success` y `data`; las operaciones de escritura
+pueden incluir `message`:
 
-Agrega DATABASE_URL en **Render > servicio > Environment**, usando la conexión
-**Session pooler** de Supabase (puerto 5432), con `sslmode=require`.
-Copia usuario y host exactamente desde Connect. Codifica los caracteres especiales
-de la contraseña si construyes la URL manualmente. Nunca subas esa URL a GitHub.
+```json
+{
+  "success": true,
+  "message": "Evento creado correctamente.",
+  "data": {}
+}
+```
 
-Sin DATABASE_URL solo funciona el arranque HTTP. No hay una base SQLite alternativa.
-Con DATABASE_URL se configura PostgreSQL; `/health/` sigue siendo una comprobación HTTP.
-Para verificar la conexión desde un entorno seguro con las variables configuradas:
+Los errores de la API DRF utilizan un formato uniforme:
+
+```json
+{
+  "success": false,
+  "message": "Los datos enviados no son válidos.",
+  "errors": {
+    "name": ["Este campo es requerido."]
+  }
+}
+```
+
+## Pruebas y validación
+
+La validación oficial utiliza PostgreSQL aislado y `config.settings_test`. Consulta
+[docs/validacion-backend.md](docs/validacion-backend.md) para levantar la base de
+pruebas, ejecutar Ruff, generar cobertura y reproducir los checks de CI.
+
+Comprobaciones rápidas con el entorno de pruebas preparado:
+
+```bash
+export DJANGO_SETTINGS_MODULE=config.settings_test
+python manage.py check
+python -m ruff check .
+python -m coverage run manage.py test --noinput --verbosity 2
+python -m coverage report
+```
+
+## Render y Supabase
+
+`render.yaml` crea el servicio web y, antes de iniciar Gunicorn, ejecuta:
+
+```bash
+python manage.py migrate --noinput
+python manage.py bootstrap_demo
+```
+
+Esto prepara las tablas, el usuario compartido de Sprint 1 y los tipos iniciales en
+cada despliegue. Ambos comandos pueden repetirse de forma segura.
+
+Configura `DATABASE_URL` en Render con la conexión PostgreSQL de Supabase y
+`sslmode=require`. No guardes credenciales en el repositorio.
+
+El health check `/health/` confirma que el proceso HTTP responde; no comprueba la
+conexión con PostgreSQL. Para verificarla desde un entorno autorizado:
 
 ```bash
 python manage.py shell -c 'from django.db import connection; connection.ensure_connection(); print("PostgreSQL conectado")'
 ```
 
-Este arranque no ejecuta `migrate` automáticamente ni modifica las tablas existentes
-creadas en Supabase. Antes de implementar el dominio, obtener el SQL verificable de usuarios, eventos
-y subtareas y acordar su mapeo, integración con el usuario Django e historial de
-migraciones. Los nombres provienen de la referencia visual y aún no están verificados. No ejecutar nuevas migraciones que
-creen tablas duplicadas. Las vistas y triggers existentes también deben versionarse.
+El servicio desplegado debe configurar además el origen real del frontend en
+`CORS_ALLOWED_ORIGINS`. Para autenticación con cookies también será necesario definir
+`CSRF_TRUSTED_ORIGINS` y el flujo de sesión/CSRF.
 
-## Frontend y permisos
+## Contribuciones
 
-Cuando exista el frontend, agrega su origen exacto a CORS_ALLOWED_ORIGINS
-(por ejemplo https://tu-frontend.vercel.app), sin barra final. Varios orígenes se
-separan por comas. Para autenticación mediante cookies, configura también
-CSRF_TRUSTED_ORIGINS y el flujo de sesión/CSRF antes de habilitarlo.
-
-Los futuros endpoints DRF requieren autenticación por defecto. Cada consulta del
-negocio debe filtrar por el organizador autenticado. No hay endpoints públicos de datos.
-
-## Referencias
-
-- https://render.com/docs/deploy-django
-- https://render.com/docs/blueprint-spec
-- https://supabase.com/docs/guides/database/connecting-to-postgres
-
-## Validación automática y contribuciones
-
-Consulta [la guía del equipo](docs/validacion-backend.md) para Conventional Commits,
-PostgreSQL aislado, checks, cobertura, Sonar y pendientes de Supabase/Render.
-La CI no requiere secretos de producción ni implementar HU futuras.
+Trabaja desde `main` actualizado en una rama corta y utiliza Conventional Commits.
+Los pull requests ejecutan validación de commits, Ruff, Django checks y la suite
+completa sobre PostgreSQL. La guía del equipo está en
+[docs/validacion-backend.md](docs/validacion-backend.md).

@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.events.models import Event, EventType
+from apps.events.exceptions import DemoUserNotConfigured
 from apps.events.services import create_event
 
 
@@ -84,7 +85,7 @@ class CreateEventServiceTests(TestCase):
             ).exists()
         )
 
-    def test_create_event_fails_if_demo_user_does_not_exist(self):
+    def test_create_event_returns_controlled_error_if_demo_user_does_not_exist(self):
         self.user.delete()
 
         validated_data = {
@@ -96,7 +97,7 @@ class CreateEventServiceTests(TestCase):
             "location": "Cali",
         }
 
-        with self.assertRaises(User.DoesNotExist):
+        with self.assertRaises(DemoUserNotConfigured):
             create_event(
                 validated_data=validated_data,
             )
