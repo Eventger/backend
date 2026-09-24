@@ -48,7 +48,6 @@ class SubtaskUpdateSerializer(SubtaskSerializer):
             "updated_at",
         ]
 
-
 class SubtaskResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     message = serializers.CharField(required=False)
@@ -59,3 +58,14 @@ class SubtaskResponseSerializer(serializers.Serializer):
 class SubtaskListResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     data = SubtaskSerializer(many=True)
+
+class TodayDataSerializer(serializers.Serializer):
+    overdue = SubtaskSerializer(many=True)
+    today = SubtaskSerializer(many=True)
+    upcoming = SubtaskSerializer(many=True)
+    completed = SubtaskSerializer(many=True)
+
+
+class TodayResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    data = TodayDataSerializer()
