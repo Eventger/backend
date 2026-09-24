@@ -9,6 +9,23 @@ from rest_framework.test import APIClient
 from apps.events.models import Event, EventType
 
 
+class EventTypeListViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_get_event_types_returns_them_ordered_by_id(self):
+        event_type_1 = EventType.objects.create(name="Social")
+        event_type_2 = EventType.objects.create(name="Boda")
+
+        response = self.client.get("/event-types/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [event_type["id"] for event_type in response.json()["data"]],
+            [event_type_1.id, event_type_2.id],
+        )
+
+
 class EventCreateViewTests(TestCase):
 
     def setUp(self):
