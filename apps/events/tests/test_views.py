@@ -3,6 +3,7 @@ from datetime import datetime
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
+from datetime import timedelta
 from rest_framework.test import APIClient
 
 from apps.events.models import Event, EventType
@@ -22,12 +23,21 @@ class EventCreateViewTests(TestCase):
             name="Conferencia",
         )
 
+        self.valid_data = {
+            "name": "Evento de prueba",
+            "type": self.event_type.id,
+            "date": "2026-10-15T18:30:00-05:00",
+            "location": "Cali",
+            "contact": "Juan Pérez",
+        }
+
     def test_create_event_returns_201(self):
         data = {
             "name": "Conferencia de tecnología",
             "type": self.event_type.id,
             "date": "2026-10-15T18:30:00-05:00",
             "location": "Cali",
+            "contact": "Juan Pérez",
         }
 
         response = self.client.post(
@@ -148,6 +158,7 @@ class EventCreateViewTests(TestCase):
                 "type": self.event_type.id,
                 "date": "2026-10-15T18:30:00-05:00",
                 "location": "Cali",
+                "contact": "Juan Pérez",
             },
             format="json",
         )
@@ -201,6 +212,7 @@ class EventCreateViewTests(TestCase):
             "type": 999999,
             "date": "2026-10-15T18:30:00-05:00",
             "location": "Cali",
+            "contact": "Juan Pérez",
         }
 
         response = self.client.post(
@@ -463,6 +475,7 @@ class EventCreateViewTests(TestCase):
                 "type": self.event_type.id,
                 "date": new_date.isoformat(),
                 "location": "Medellín",
+                "contact": "Juan Pérez",
             },
             format="json",
         )
@@ -519,3 +532,71 @@ class EventCreateViewTests(TestCase):
         self.assertTrue(
             Event.objects.filter(id=event.id).exists()
         )
+
+    def test_create_event_without_contact_returns_400(self):
+        data = self.valid_data.copy()
+        data.pop("contact")
+
+        response = self.client.post(
+            "/events/",
+            data,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("contact", response.json()["errors"])
+
+    def test_create_event_with_blank_contact_returns_400(self):
+        data = self.valid_data.copy()
+        data["contact"] = ""
+
+        response = self.client.post(
+            "/events/",
+            data,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("contact", response.json()["errors"])
+
+    def test_create_event_with_whitespace_contact_returns_400(self):
+        data = self.valid_data.copy()
+        data["contact"] = "     "
+
+        response = self.client.post(
+            "/events/",
+            data,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("contact", response.json()["errors"])
+
+    def test_create_event_with_past_date_returns_400(self):
+        data = self.valid_data.copy()
+        data["date"] = (
+            timezone.now() - timedelta(days=1)
+        ).isoformat()
+
+        response = self.client.post(
+            "/events/",
+            data,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("date", response.json()["errors"])
+
+    def test_create_event_with_future_date_returns_201(self):
+        data = self.valid_data.copy()
+        data["date"] = (
+            timezone.now() + timedelta(days=1)
+        ).isoformat()
+
+        response = self.client.post(
+            "/events/",
+            data,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
