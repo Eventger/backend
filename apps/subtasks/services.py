@@ -9,7 +9,7 @@ def create_subtask(*, event: Event, validated_data):
         **validated_data
     )
 
-def get_today_subtasks(*, user):
+def get_today_subtasks(*, user, status=None, event_id=None):
     now = timezone.localtime()
 
     today_start = now.replace(
@@ -26,6 +26,12 @@ def get_today_subtasks(*, user):
         "target_date",
         "estimated_hours",
     )
+
+    if status is not None:
+        subtasks = subtasks.filter(state=status)
+
+    if event_id is not None:
+        subtasks = subtasks.filter(event_id=event_id)
 
     completed_subtasks = subtasks.filter(
         state=Subtask.State.COMPLETED,

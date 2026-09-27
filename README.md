@@ -64,10 +64,14 @@ Direcciones locales:
 | GET | `/event-types/` | Listar tipos de evento |
 | GET, POST | `/events/{event_id}/subtasks/` | Listar o crear subtareas dentro de un evento |
 | GET | `/subtasks/` | Listar subtareas del usuario demo |
+| GET | `/hoy/` | Listar subtareas agrupadas por fecha; admite `status` y `event` como filtros |
 | GET, PUT, PATCH, DELETE | `/subtasks/{id}/` | Consultar, actualizar o eliminar una subtarea |
 
 `POST /subtasks/` no está habilitado. Toda subtarea debe crearse mediante la ruta
 del evento al que pertenece.
+
+`GET /hoy/` acepta `status` (`pending`, `in_progress` o `completed`) y `event`
+(ID del evento) como parámetros de consulta. Los filtros pueden combinarse.
 
 ## Contrato de respuestas
 

@@ -1,4 +1,8 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+)
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -21,6 +25,7 @@ from .serializers import (
     SubtaskResponseSerializer,
     SubtaskSerializer,
     SubtaskUpdateSerializer,
+    TodayFilterSerializer,
     TodayResponseSerializer,
 )
 from .services import create_subtask, get_today_subtasks
@@ -243,12 +248,34 @@ class TodaySubtaskView(APIView):
 
     @extend_schema(
         responses={200: TodayResponseSerializer},
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=[choice.value for choice in Subtask.State],
+                description="Filtra por estado de la subtarea.",
+            ),
+            OpenApiParameter(
+                name="event",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filtra por el ID del evento.",
+            ),
+        ],
     )
     def get(self, request):
         user = User.objects.get(username="demo")
 
+        filters = TodayFilterSerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
+
         subtasks = get_today_subtasks(
             user=user,
+            status=filters.validated_data.get("status"),
+            event_id=filters.validated_data.get("event"),
         )
 
         return Response(

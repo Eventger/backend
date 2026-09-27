@@ -1030,3 +1030,86 @@ class SubtaskCreateViewTests(TestCase):
         data = response.json()["data"]
 
         self.assertEqual(data["upcoming"][0]["id"], subtask.id)
+
+    def test_today_filters_by_status(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+
+        pending = Subtask.objects.create(
+            event=event,
+            name="Pendiente",
+            target_date=timezone.now(),
+            estimated_hours=1,
+        )
+        completed = Subtask.objects.create(
+            event=event,
+            name="Completada",
+            target_date=timezone.now(),
+            estimated_hours=1,
+            state=Subtask.State.COMPLETED,
+        )
+
+        response = self.client.get(
+            "/hoy/",
+            {"status": Subtask.State.COMPLETED},
+        )
+
+        ids = [
+            item["id"]
+            for group in response.json()["data"].values()
+            for item in group
+        ]
+
+        self.assertEqual(ids, [completed.id])
+        self.assertNotIn(pending.id, ids)
+
+    def test_today_filters_by_event(self):
+        first_event_subtask = Subtask.objects.create(
+            event=self.event,
+            name="Primera tarea",
+            target_date=timezone.now(),
+            estimated_hours=1,
+        )
+        second_event = Event.objects.create(
+            user=self.user,
+            name="Segundo evento",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="3001234567",
+        )
+        second_event_subtask = Subtask.objects.create(
+            event=second_event,
+            name="Segunda tarea",
+            target_date=timezone.now(),
+            estimated_hours=1,
+        )
+
+        response = self.client.get(
+            "/hoy/",
+            {"event": second_event.id},
+        )
+
+        ids = [
+            item["id"]
+            for group in response.json()["data"].values()
+            for item in group
+        ]
+
+        self.assertEqual(ids, [second_event_subtask.id])
+        self.assertNotIn(first_event_subtask.id, ids)
+
+    def test_today_rejects_invalid_status_filter(self):
+        response = self.client.get(
+            "/hoy/",
+            {"status": "invalid"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["success"])

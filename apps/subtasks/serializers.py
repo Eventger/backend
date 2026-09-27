@@ -66,6 +66,17 @@ class TodayDataSerializer(serializers.Serializer):
     completed = SubtaskSerializer(many=True)
 
 
+class TodayFilterSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=Subtask.State.choices,
+        required=False,
+    )
+    event = serializers.IntegerField(
+        min_value=1,
+        required=False,
+    )
+
+
 class TodayResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     data = TodayDataSerializer()
