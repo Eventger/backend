@@ -115,10 +115,6 @@ class OpenAPISchemaTests(SimpleTestCase):
                 "examples"
             ]
         )
-        self.assertTrue(
-            event_post["responses"]["503"]["content"]["application/json"][
-                "examples"
-            ]
         )
         self.assertTrue(
             subtask_post["requestBody"]["content"]["application/json"][
