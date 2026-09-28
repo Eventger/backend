@@ -12,3 +12,6 @@ htmlcov/
 reports/
 .ruff_cache/
 .scannerwork/
+.python-version
+nohup.out
+.idea/

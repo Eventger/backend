@@ -23,11 +23,10 @@ from .services import create_event
 
 class EventViewSet(viewsets.ModelViewSet):
     serializer_class = EventSerializer
-    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return Event.objects.filter(
-            user__username="demo",
+            user=self.request.user
         ).order_by("-date")
 
     @extend_schema(
@@ -54,7 +53,6 @@ class EventViewSet(viewsets.ModelViewSet):
         responses={
             201: EventResponseSerializer,
             400: ValidationErrorResponseSerializer,
-            503: MessageErrorResponseSerializer,
         },
         examples=EVENT_CREATE_EXAMPLES,
     )
@@ -65,9 +63,7 @@ class EventViewSet(viewsets.ModelViewSet):
 
         serializer.is_valid(raise_exception=True)
 
-        event = create_event(
-            validated_data=serializer.validated_data,
-        )
+        event = create_event(user=request.user, validated_data=serializer.validated_data)
 
         return Response(
             {

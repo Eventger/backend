@@ -4,10 +4,8 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from rest_framework import status, viewsets
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth.models import User
 
 from apps.events.models import Event
 from config.api_serializers import (
@@ -33,11 +31,10 @@ from .services import create_subtask, get_today_subtasks
 
 class SubtaskViewSet(viewsets.GenericViewSet):
     serializer_class = SubtaskSerializer
-    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return Subtask.objects.filter(
-            event__user__username="demo",
+            event__user=self.request.user,
         ).order_by("target_date")
 
     def get_serializer_class(self):
@@ -160,7 +157,6 @@ class SubtaskViewSet(viewsets.GenericViewSet):
 
 
 class EventSubtaskView(APIView):
-    permission_classes = [AllowAny]
 
     @extend_schema(
         responses={
@@ -171,7 +167,7 @@ class EventSubtaskView(APIView):
     def get(self, request, event_id):
         event = Event.objects.filter(
             pk=event_id,
-            user__username="demo",
+            user=self.request.user,
         ).first()
 
         if event is None:
@@ -210,7 +206,7 @@ class EventSubtaskView(APIView):
     def post(self, request, event_id):
         event = Event.objects.filter(
             pk=event_id,
-            user__username="demo",
+            user=self.request.user,
         ).first()
 
         if event is None:
@@ -244,7 +240,6 @@ class EventSubtaskView(APIView):
 
 
 class TodaySubtaskView(APIView):
-    permission_classes = [AllowAny]
 
     @extend_schema(
         responses={200: TodayResponseSerializer},
@@ -267,13 +262,12 @@ class TodaySubtaskView(APIView):
         ],
     )
     def get(self, request):
-        user = User.objects.get(username="demo")
 
         filters = TodayFilterSerializer(data=request.query_params)
         filters.is_valid(raise_exception=True)
 
         subtasks = get_today_subtasks(
-            user=user,
+            user=request.user,
             status=filters.validated_data.get("status"),
             event_id=filters.validated_data.get("event"),
         )

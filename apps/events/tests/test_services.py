@@ -1,20 +1,20 @@
 from datetime import datetime
 
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.events.models import Event, EventType
-from apps.events.exceptions import DemoUserNotConfigured
 from apps.events.services import create_event
+
+User = get_user_model()
 
 
 class CreateEventServiceTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(
-            username="demo",
-            password="test-password",
+            username="event-owner",
         )
 
         self.event_type = EventType.objects.create(
@@ -32,6 +32,7 @@ class CreateEventServiceTests(TestCase):
         }
 
         event = create_event(
+            user=self.user,
             validated_data=validated_data,
         )
 
@@ -48,21 +49,6 @@ class CreateEventServiceTests(TestCase):
             event.location,
             "Cali",
         )
-
-    def test_create_event_assigns_demo_user(self):
-        validated_data = {
-            "name": "Evento de prueba",
-            "type": self.event_type,
-            "date": timezone.make_aware(
-                datetime(2026, 11, 1, 10, 0),
-            ),
-            "location": "Bogotá",
-        }
-
-        event = create_event(
-            validated_data=validated_data,
-        )
-
         self.assertEqual(event.user, self.user)
 
     def test_create_event_persists_event(self):
@@ -76,6 +62,7 @@ class CreateEventServiceTests(TestCase):
         }
 
         event = create_event(
+            user=self.user,
             validated_data=validated_data,
         )
 
@@ -84,20 +71,3 @@ class CreateEventServiceTests(TestCase):
                 id=event.id,
             ).exists()
         )
-
-    def test_create_event_returns_controlled_error_if_demo_user_does_not_exist(self):
-        self.user.delete()
-
-        validated_data = {
-            "name": "Evento sin usuario",
-            "type": self.event_type,
-            "date": timezone.make_aware(
-                datetime(2026, 12, 10, 10, 0),
-            ),
-            "location": "Cali",
-        }
-
-        with self.assertRaises(DemoUserNotConfigured):
-            create_event(
-                validated_data=validated_data,
-            )

@@ -1,9 +1,12 @@
 from datetime import datetime
 
-from apps.events.models import Event, EventType
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+
+from apps.events.models import Event, EventType
+
+User = get_user_model()
 
 class EventModelTests(TestCase):
 
@@ -21,7 +24,7 @@ class EventModelTests(TestCase):
 
     def test_event_can_be_created(self):
         user = User.objects.create_user(
-            username="demo",
+            username="event-owner",
             password="test-password",
         )
 

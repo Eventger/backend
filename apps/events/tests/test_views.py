@@ -1,12 +1,14 @@
 from datetime import datetime
 
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.test import APIClient
 
 from apps.events.models import Event, EventType
+
+User = get_user_model()
 
 
 class EventTypeListViewTests(TestCase):
@@ -32,9 +34,10 @@ class EventCreateViewTests(TestCase):
         self.client = APIClient()
 
         self.user = User.objects.create_user(
-            username="demo",
+            username="event-owner",
             password="test-password",
         )
+        self.client.force_authenticate(user=self.user)
 
         self.event_type = EventType.objects.create(
             name="Conferencia",
@@ -165,33 +168,6 @@ class EventCreateViewTests(TestCase):
             0,
         )
 
-    def test_create_event_returns_503_when_demo_user_is_missing(self):
-        self.user.delete()
-
-        response = self.client.post(
-            "/events/",
-            {
-                "name": "Evento sin usuario demo",
-                "type": self.event_type.id,
-                "date": "2026-10-15T18:30:00-05:00",
-                "location": "Cali",
-                "contact": "Juan Pérez",
-            },
-            format="json",
-        )
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(
-            response.json(),
-            {
-                "success": False,
-                "message": (
-                    "El servicio no está configurado para crear eventos."
-                ),
-            },
-        )
-        self.assertEqual(Event.objects.count(), 0)
-
     def test_create_event_rejects_blank_name(self):
         data = {
             "name": "   ",
@@ -255,7 +231,7 @@ class EventCreateViewTests(TestCase):
             0,
         )
     
-    def test_get_events_returns_demo_user_events(self):
+    def test_get_events_returns_authenticated_user_events(self):
         event_1 = Event.objects.create(
             user=self.user,
             name="Conferencia de tecnología",
@@ -323,9 +299,9 @@ class EventCreateViewTests(TestCase):
             password="test-password",
         )
 
-        demo_event = Event.objects.create(
+        own_event = Event.objects.create(
             user=self.user,
-            name="Evento de demo",
+            name="Evento propio",
             type=self.event_type,
             date=timezone.make_aware(
                 datetime(2026, 10, 15, 18, 30),
@@ -364,7 +340,7 @@ class EventCreateViewTests(TestCase):
         ]
 
         self.assertIn(
-            demo_event.id,
+            own_event.id,
             event_ids,
         )
 
@@ -549,6 +525,29 @@ class EventCreateViewTests(TestCase):
         self.assertTrue(
             Event.objects.filter(id=event.id).exists()
         )
+
+    def test_patch_event_does_not_update_event_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+        event = Event.objects.create(
+            user=other_user,
+            name="Evento protegido",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Cali",
+        )
+
+        response = self.client.patch(
+            f"/events/{event.id}/",
+            {"name": "Intento de actualización"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        event.refresh_from_db()
+        self.assertEqual(event.name, "Evento protegido")
 
     def test_create_event_without_contact_returns_400(self):
         data = self.valid_data.copy()
