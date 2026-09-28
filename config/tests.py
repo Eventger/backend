@@ -115,7 +115,6 @@ class OpenAPISchemaTests(SimpleTestCase):
                 "examples"
             ]
         )
-        )
         self.assertTrue(
             subtask_post["requestBody"]["content"]["application/json"][
                 "examples"
