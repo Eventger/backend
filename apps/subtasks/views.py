@@ -6,7 +6,6 @@ from drf_spectacular.utils import (
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth.models import User
 
 from apps.events.models import Event
 from config.api_serializers import (
