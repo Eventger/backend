@@ -34,11 +34,11 @@ Preparar la base de datos:
 
 ```bash
 python manage.py migrate
-python manage.py bootstrap_demo
+python manage.py bootstrap_initial_data
 ```
 
-`bootstrap_demo` crea de forma idempotente el usuario `demo` y el catálogo inicial de
-tipos de evento. Puede ejecutarse varias veces sin duplicar registros.
+`bootstrap_initial_data` crea de forma idempotente el catálogo inicial de tipos de
+evento. Puede ejecutarse varias veces sin duplicar registros.
 
 Comprobar y ejecutar:
 
@@ -120,11 +120,11 @@ python -m coverage report
 
 ```bash
 python manage.py migrate --noinput
-python manage.py bootstrap_demo
+python manage.py bootstrap_initial_data
 ```
 
-Esto prepara las tablas, el usuario compartido de Sprint 1 y los tipos iniciales en
-cada despliegue. Ambos comandos pueden repetirse de forma segura.
+Esto prepara las tablas y los tipos iniciales en cada despliegue. Ambos comandos
+pueden repetirse de forma segura.
 
 Configura `DATABASE_URL` en Render con la conexión PostgreSQL de Supabase y
 `sslmode=require`. No guardes credenciales en el repositorio.
