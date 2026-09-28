@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.events.models import Event, EventType
 from apps.subtasks.models import Subtask
+
+User = get_user_model()
 
 
 class SubtaskCreateViewTests(TestCase):
@@ -16,9 +18,10 @@ class SubtaskCreateViewTests(TestCase):
         self.client = APIClient()
 
         self.user = User.objects.create_user(
-            username="demo",
+            username="task-owner",
             password="test-password",
         )
+        self.client.force_authenticate(user=self.user)
 
         self.event_type = EventType.objects.create(
             name="Conferencia",
@@ -429,6 +432,51 @@ class SubtaskCreateViewTests(TestCase):
             "El evento no existe.",
         )
 
+    def test_get_subtasks_returns_404_for_event_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Evento privado",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        response = self.client.get(
+            f"/events/{other_event.id}/subtasks/",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_create_subtask_returns_404_for_event_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Evento privado",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        response = self.client.post(
+            f"/events/{other_event.id}/subtasks/",
+            {
+                "name": "Tarea no autorizada",
+                "target_date": timezone.now().isoformat(),
+                "estimated_hours": "2.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Subtask.objects.count(), 0)
+
     def test_get_subtasks_returns_empty_list_when_event_has_no_subtasks(self):
         response = self.client.get(
             f"/events/{self.event.id}/subtasks/",
@@ -512,6 +560,59 @@ class SubtaskCreateViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_patch_subtask_does_not_update_subtask_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Evento privado",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Cali",
+        )
+        subtask = Subtask.objects.create(
+            event=other_event,
+            name="Tarea protegida",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {"name": "Intento de actualización"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        subtask.refresh_from_db()
+        self.assertEqual(subtask.name, "Tarea protegida")
+
+    def test_delete_subtask_does_not_delete_subtask_from_other_user(self):
+        other_user = User.objects.create_user(
+            username="other",
+            password="test-password",
+        )
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Evento privado",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Cali",
+        )
+        subtask = Subtask.objects.create(
+            event=other_event,
+            name="Tarea protegida",
+            target_date=timezone.now(),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.delete(f"/subtasks/{subtask.id}/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Subtask.objects.filter(id=subtask.id).exists())
 
     def test_patch_subtask_updates_subtask(self):
         subtask = Subtask.objects.create(

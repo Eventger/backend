@@ -1,0 +1,48 @@
+from clerk_backend_api import Clerk
+from clerk_backend_api.security.types import AuthenticateRequestOptions
+from django.conf import settings
+from rest_framework.authentication import BaseAuthentication
+from rest_framework.exceptions import AuthenticationFailed
+
+from apps.users.models import User
+
+
+class ClerkAuthentication(BaseAuthentication):
+    def authenticate_header(self, request):
+        return "Bearer"
+
+    def __init__(self):
+        self.clerk = Clerk(bearer_auth=settings.CLERK_SECRET_KEY)
+
+    def authenticate(self, request):
+        authorization = request.headers.get("Authorization")
+
+        if not authorization:
+            return None
+
+        if not authorization.startswith("Bearer "):
+            raise AuthenticationFailed("Invalid authorization header.")
+
+        request_state = self.clerk.authenticate_request(
+            request,
+            AuthenticateRequestOptions(
+                authorized_parties=settings.CLERK_AUTHORIZED_PARTIES,
+            ),
+        )
+
+        if not request_state.is_signed_in:
+            raise AuthenticationFailed("Invalid or expired Clerk token.")
+
+        clerk_user_id = request_state.payload.get("sub")
+
+        if not clerk_user_id:
+            raise AuthenticationFailed("Clerk token does not contain a user ID.")
+
+        user, _ = User.objects.get_or_create(
+            clerk_id=clerk_user_id,
+            defaults={
+                "username": clerk_user_id,
+            },
+        )
+
+        return user, request_state.payload

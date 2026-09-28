@@ -1,16 +1,11 @@
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 
-from .exceptions import DemoUserNotConfigured
 from .models import Event
 
-DEMO_USERNAME = "demo"
+User = get_user_model()
 
-def create_event(*, validated_data):
-    try:
-        user = User.objects.get(username=DEMO_USERNAME)
-    except User.DoesNotExist as exc:
-        raise DemoUserNotConfigured from exc
 
+def create_event(*, user: User, validated_data):
     return Event.objects.create(
         user=user,
         **validated_data,

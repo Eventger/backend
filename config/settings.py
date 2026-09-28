@@ -13,8 +13,23 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "")
 if not SECRET_KEY:
     raise ImproperlyConfigured("Configura SECRET_KEY en las variables de entorno.")
 
+CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
+
+if not CLERK_SECRET_KEY:
+    raise ImproperlyConfigured(
+        "Configura CLERK_SECRET_KEY en las variables de entorno."
+    )
+
+
 def csv_env(name):
     return [value.strip() for value in os.getenv(name, "").split(",") if value.strip()]
+
+
+CLERK_AUTHORIZED_PARTIES = csv_env("CLERK_AUTHORIZED_PARTIES")
+if not CLERK_AUTHORIZED_PARTIES:
+    raise ImproperlyConfigured(
+        "CLERK_AUTHORIZED_PARTIES environment variable is required."
+    )
 
 ALLOWED_HOSTS = csv_env("ALLOWED_HOSTS")
 if DEBUG:
@@ -31,6 +46,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "apps.events",
     "apps.subtasks",
+    "apps.users"
 ]
 
 MIDDLEWARE = [
@@ -84,9 +100,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = csv_env("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = csv_env("CSRF_TRUSTED_ORIGINS")
 
+AUTH_USER_MODEL="users.User"
+
 REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
-    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.users.authentication.ClerkAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer"
+    ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "config.exceptions.custom_exception_handler",
 }

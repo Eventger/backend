@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
@@ -9,12 +9,14 @@ from apps.events.models import Event, EventType
 from apps.subtasks.models import Subtask
 from apps.subtasks.services import create_subtask
 
+User = get_user_model()
+
 
 class CreateSubtaskServiceTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(
-            username="demo",
+            username="task-owner",
             password="test-password",
         )
 

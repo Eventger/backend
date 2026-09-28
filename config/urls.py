@@ -34,4 +34,6 @@ urlpatterns = [
     ),
     path("", include("apps.events.urls")),
     path("", include("apps.subtasks.urls")),
+    path("api/auth/", include("apps.users.urls")),
+
 ]
