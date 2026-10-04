@@ -12,5 +12,6 @@ class MeView(APIView):
                 "id": request.user.id,
                 "clerk_id": request.user.clerk_id,
                 "username": request.user.username,
+                "daily_limit_hours": request.user.daily_limit_hours,
             }
         )
