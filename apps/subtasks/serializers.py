@@ -1,6 +1,9 @@
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
+from decimal import Decimal
+
 from .models import Subtask
+
 
 class SubtaskSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,6 +51,7 @@ class SubtaskUpdateSerializer(SubtaskSerializer):
             "updated_at",
         ]
 
+
 class SubtaskResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     message = serializers.CharField(required=False)
@@ -58,6 +62,7 @@ class SubtaskResponseSerializer(serializers.Serializer):
 class SubtaskListResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     data = SubtaskSerializer(many=True)
+
 
 class TodayDataSerializer(serializers.Serializer):
     overdue = SubtaskSerializer(many=True)
@@ -71,6 +76,7 @@ class TodayFilterSerializer(serializers.Serializer):
         choices=Subtask.State.choices,
         required=False,
     )
+
     event = serializers.IntegerField(
         min_value=1,
         required=False,
@@ -80,3 +86,55 @@ class TodayFilterSerializer(serializers.Serializer):
 class TodayResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     data = TodayDataSerializer()
+
+
+class OverloadConflictRequestSerializer(serializers.Serializer):
+    subtask_id = serializers.IntegerField(
+        min_value=1,
+    )
+
+    target_date = serializers.DateTimeField(
+        required=False,
+    )
+
+    estimated_hours = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        min_value=Decimal("0.01"),
+    )
+
+    def validate(self, attrs):
+        if (
+            "target_date" not in attrs
+            and "estimated_hours" not in attrs
+        ):
+            raise serializers.ValidationError(
+                "Debes enviar target_date o estimated_hours."
+            )
+
+        return attrs
+
+
+class OverloadConflictDataSerializer(serializers.Serializer):
+    has_conflict = serializers.BooleanField()
+
+    planned_hours = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    limit_hours = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    exceeds_by = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+
+class OverloadConflictResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    data = OverloadConflictDataSerializer()

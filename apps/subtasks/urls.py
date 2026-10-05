@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import EventSubtaskView, SubtaskViewSet, TodaySubtaskView
+from .views import EventSubtaskView, SubtaskViewSet, TodaySubtaskView, OverloadConflictView
 
 router = DefaultRouter()
 router.register(
@@ -24,5 +24,10 @@ urlpatterns = [
         "hoy/",
         TodaySubtaskView.as_view(),
         name="today-subtasks",
+    ),
+    path(
+        "conflicts/overload/",
+        OverloadConflictView.as_view(),
+        name="overload-conflict",
     ),
 ]
