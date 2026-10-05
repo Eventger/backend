@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django.test import TestCase
 
-from apps.subtasks.serializers import SubtaskSerializer
+from apps.subtasks.serializers import ( OverloadConflictRequestSerializer, OverloadConflictResponseSerializer, SubtaskSerializer)
 
 
 class SubtaskSerializerTests(TestCase):
@@ -188,3 +188,135 @@ class SubtaskSerializerTests(TestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertIn("target_date", serializer.errors)
+
+class OverloadConflictSerializerTests(TestCase):
+
+    def test_valid_request_with_target_date(self):
+        serializer = OverloadConflictRequestSerializer(
+            data={
+                "subtask_id": 1,
+                "target_date": "2026-10-20T14:00:00-05:00",
+            }
+        )
+
+        self.assertTrue(
+            serializer.is_valid(),
+            serializer.errors,
+        )
+
+    def test_valid_request_with_estimated_hours(self):
+        serializer = OverloadConflictRequestSerializer(
+            data={
+                "subtask_id": 1,
+                "estimated_hours": "2.00",
+            }
+        )
+
+        self.assertTrue(
+            serializer.is_valid(),
+            serializer.errors,
+        )
+
+        self.assertEqual(
+            serializer.validated_data["estimated_hours"],
+            Decimal("2.00"),
+        )
+
+    def test_valid_request_with_target_date_and_estimated_hours(self):
+        serializer = OverloadConflictRequestSerializer(
+            data={
+                "subtask_id": 1,
+                "target_date": "2026-10-20T14:00:00-05:00",
+                "estimated_hours": "1.50",
+            }
+        )
+
+        self.assertTrue(
+            serializer.is_valid(),
+            serializer.errors,
+        )
+
+    def test_request_requires_target_date_or_estimated_hours(self):
+        serializer = OverloadConflictRequestSerializer(
+            data={
+                "subtask_id": 1,
+            }
+        )
+
+        self.assertFalse(
+            serializer.is_valid(),
+        )
+
+        self.assertIn(
+            "non_field_errors",
+            serializer.errors,
+        )
+
+    def test_subtask_id_must_be_positive(self):
+        serializer = OverloadConflictRequestSerializer(
+            data={
+                "subtask_id": 0,
+                "estimated_hours": "2.00",
+            }
+        )
+
+        self.assertFalse(
+            serializer.is_valid(),
+        )
+
+        self.assertIn(
+            "subtask_id",
+            serializer.errors,
+        )
+
+    def test_estimated_hours_must_be_positive(self):
+        serializer = OverloadConflictRequestSerializer(
+            data={
+                "subtask_id": 1,
+                "estimated_hours": "0",
+            }
+        )
+
+        self.assertFalse(
+            serializer.is_valid(),
+        )
+
+        self.assertIn(
+            "estimated_hours",
+            serializer.errors,
+        )
+
+    def test_target_date_rejects_invalid_format(self):
+        serializer = OverloadConflictRequestSerializer(
+            data={
+                "subtask_id": 1,
+                "target_date": "fecha-invalida",
+            }
+        )
+
+        self.assertFalse(
+            serializer.is_valid(),
+        )
+
+        self.assertIn(
+            "target_date",
+            serializer.errors,
+        )
+
+    def test_valid_conflict_response(self):
+        serializer = OverloadConflictResponseSerializer(
+            data={
+                "success": True,
+                "data": {
+                    "has_conflict": True,
+                    "planned_hours": "7.00",
+                    "limit_hours": "6.00",
+                    "exceeds_by": "1.00",
+                },
+            }
+        )
+
+        self.assertTrue(
+            serializer.is_valid(),
+            serializer.errors,
+        )

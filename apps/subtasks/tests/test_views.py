@@ -1214,3 +1214,559 @@ class SubtaskCreateViewTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json()["success"])
+
+class OverloadConflictViewTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.user = User.objects.create_user(
+            username="planning-owner",
+            password="test-password",
+            daily_limit_hours=Decimal("6.00"),
+        )
+
+        self.client.force_authenticate(
+            user=self.user,
+        )
+
+        self.event_type = EventType.objects.create(
+            name="Conferencia",
+        )
+
+        self.event = Event.objects.create(
+            user=self.user,
+            name="Conferencia de tecnología",
+            type=self.event_type,
+            date=timezone.make_aware(
+                datetime(2026, 10, 25, 18, 30),
+            ),
+            location="Cali",
+        )
+
+        self.target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+    def test_overload_endpoint_detects_conflict(self):
+        Subtask.objects.create(
+            event=self.event,
+            name="Trabajo existente",
+            target_date=self.target_date,
+            estimated_hours=Decimal("5.00"),
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea a mover",
+            target_date=self.target_date + timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.post(
+            "/conflicts/overload/",
+            {
+                "subtask_id": subtask.id,
+                "target_date": self.target_date.isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        data = response.json()["data"]
+
+        self.assertTrue(
+            data["has_conflict"],
+        )
+
+        self.assertEqual(
+            data["planned_hours"],
+            "7.00",
+        )
+
+        self.assertEqual(
+            data["limit_hours"],
+            "6.00",
+        )
+
+        self.assertEqual(
+            data["exceeds_by"],
+            "1.00",
+        )
+    def test_overload_endpoint_returns_no_conflict(self):
+        Subtask.objects.create(
+            event=self.event,
+            name="Trabajo existente",
+            target_date=self.target_date,
+            estimated_hours=Decimal("4.00"),
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea a mover",
+            target_date=self.target_date + timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.post(
+            "/conflicts/overload/",
+            {
+                "subtask_id": subtask.id,
+                "target_date": self.target_date.isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        data = response.json()["data"]
+
+        self.assertFalse(
+            data["has_conflict"],
+        )
+
+        self.assertEqual(
+            data["planned_hours"],
+            "6.00",
+        )
+    def test_overload_endpoint_returns_404_for_other_user_subtask(self):
+        other_user = User.objects.create_user(
+            username="other-user",
+            password="test-password",
+        )
+
+        other_event = Event.objects.create(
+            user=other_user,
+            name="Evento privado",
+            type=self.event_type,
+            date=timezone.now(),
+            location="Bogotá",
+        )
+
+        other_subtask = Subtask.objects.create(
+            event=other_event,
+            name="Subtarea ajena",
+            target_date=self.target_date,
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.post(
+            "/conflicts/overload/",
+            {
+                "subtask_id": other_subtask.id,
+                "target_date": self.target_date.isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+        self.assertFalse(
+            response.json()["success"],
+        )
+    def test_overload_endpoint_does_not_modify_subtask(self):
+        original_date = self.target_date + timedelta(days=1)
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea",
+            target_date=original_date,
+            estimated_hours=Decimal("2.00"),
+        )
+
+        self.client.post(
+            "/conflicts/overload/",
+            {
+                "subtask_id": subtask.id,
+                "target_date": self.target_date.isoformat(),
+                "estimated_hours": "1.00",
+            },
+            format="json",
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.target_date,
+            original_date,
+        )
+
+        self.assertEqual(
+            subtask.estimated_hours,
+            Decimal("2.00"),
+        )
+    def test_patch_subtask_updates_target_date_when_no_conflict_exists(self):
+        target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+
+        Subtask.objects.create(
+            event=self.event,
+            name="Trabajo existente",
+            target_date=target_date,
+            estimated_hours=Decimal("4.00"),
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea a mover",
+            target_date=target_date + timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "target_date": target_date.isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.target_date,
+            target_date,
+        )
+    def test_patch_subtask_does_not_update_when_overload_exists(self):
+        target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+
+        Subtask.objects.create(
+            event=self.event,
+            name="Trabajo existente",
+            target_date=target_date,
+            estimated_hours=Decimal("5.00"),
+        )
+
+        original_date = target_date + timedelta(days=1)
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea a mover",
+            target_date=original_date,
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "target_date": target_date.isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            409,
+        )
+
+        response_data = response.json()
+
+        self.assertFalse(
+            response_data["success"],
+        )
+
+        self.assertTrue(
+            response_data["data"]["has_conflict"],
+        )
+
+        self.assertEqual(
+            response_data["data"]["planned_hours"],
+            "7.00",
+        )
+
+        self.assertEqual(
+            response_data["data"]["limit_hours"],
+            "6.00",
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.target_date,
+            original_date,
+        )
+    def test_patch_subtask_resolves_conflict_by_reducing_hours(self):
+        target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+
+        Subtask.objects.create(
+            event=self.event,
+            name="Trabajo existente",
+            target_date=target_date,
+            estimated_hours=Decimal("5.00"),
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea",
+            target_date=target_date + timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "target_date": target_date.isoformat(),
+                "estimated_hours": "1.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.target_date,
+            target_date,
+        )
+
+        self.assertEqual(
+            subtask.estimated_hours,
+            Decimal("1.00"),
+        )
+    def test_patch_subtask_keeps_conflict_when_reduction_is_not_enough(self):
+        target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+
+        Subtask.objects.create(
+            event=self.event,
+            name="Trabajo existente",
+            target_date=target_date,
+            estimated_hours=Decimal("5.00"),
+        )
+
+        original_date = target_date + timedelta(days=1)
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea",
+            target_date=original_date,
+            estimated_hours=Decimal("3.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "target_date": target_date.isoformat(),
+                "estimated_hours": "2.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            409,
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.target_date,
+            original_date,
+        )
+
+        self.assertEqual(
+            subtask.estimated_hours,
+            Decimal("3.00"),
+        )
+    def test_patch_name_is_allowed_even_if_day_is_overloaded(self):
+        target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+
+        Subtask.objects.create(
+            event=self.event,
+            name="Otra tarea",
+            target_date=target_date,
+            estimated_hours=Decimal("5.00"),
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Nombre original",
+            target_date=target_date,
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "name": "Nombre actualizado",
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.name,
+            "Nombre actualizado",
+        )
+    def test_patch_completed_state_is_allowed_when_day_is_overloaded(self):
+        target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+
+        Subtask.objects.create(
+            event=self.event,
+            name="Otra tarea",
+            target_date=target_date,
+            estimated_hours=Decimal("5.00"),
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea a completar",
+            target_date=target_date,
+            estimated_hours=Decimal("2.00"),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "state": Subtask.State.COMPLETED,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.state,
+            Subtask.State.COMPLETED,
+        )
+    def test_patch_completed_to_pending_is_blocked_if_it_causes_overload(self):
+        target_date = timezone.make_aware(
+            datetime(2026, 10, 20, 14, 0),
+        )
+
+        Subtask.objects.create(
+            event=self.event,
+            name="Trabajo existente",
+            target_date=target_date,
+            estimated_hours=Decimal("5.00"),
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea completada",
+            target_date=target_date,
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.COMPLETED,
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "state": Subtask.State.PENDING,
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            409,
+        )
+
+        subtask.refresh_from_db()
+
+        self.assertEqual(
+            subtask.state,
+            Subtask.State.COMPLETED,
+        )
+    def test_reprogrammed_subtask_moves_from_overdue_to_today(self):
+        today_start = timezone.localtime().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Tarea vencida",
+            target_date=today_start - timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+        )
+
+        new_target_date = (
+            today_start
+            + timedelta(hours=10)
+        )
+
+        patch_response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "target_date": new_target_date.isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(
+            patch_response.status_code,
+            200,
+        )
+
+        response = self.client.get(
+            "/hoy/",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        data = response.json()["data"]
+
+        today_ids = [
+            item["id"]
+            for item in data["today"]
+        ]
+
+        overdue_ids = [
+            item["id"]
+            for item in data["overdue"]
+        ]
+
+        self.assertIn(
+            subtask.id,
+            today_ids,
+        )
+
+        self.assertNotIn(
+            subtask.id,
+            overdue_ids,
+        )

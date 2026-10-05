@@ -25,8 +25,11 @@ from .serializers import (
     SubtaskUpdateSerializer,
     TodayFilterSerializer,
     TodayResponseSerializer,
+    OverloadConflictRequestSerializer,
+    OverloadConflictResponseSerializer,
+    OverloadConflictDataSerializer,
 )
-from .services import create_subtask, get_today_subtasks
+from .services import create_subtask, get_today_subtasks, check_daily_overload
 
 
 class SubtaskViewSet(viewsets.GenericViewSet):
@@ -130,14 +133,71 @@ class SubtaskViewSet(viewsets.GenericViewSet):
 
         serializer.is_valid(raise_exception=True)
 
+        fields_affecting_load = {
+            "target_date",
+            "estimated_hours",
+            "state",
+        }
+
+        should_check_overload = any(
+            field in serializer.validated_data
+            for field in fields_affecting_load
+        )
+
+        conflict = None
+
+        if should_check_overload:
+            conflict = check_daily_overload(
+                user=request.user,
+                subtask=subtask,
+                target_date=serializer.validated_data.get(
+                    "target_date"
+                ),
+                estimated_hours=serializer.validated_data.get(
+                    "estimated_hours"
+                ),
+                state=serializer.validated_data.get(
+                    "state"
+                ),
+            )
+
+            if conflict["has_conflict"]:
+                planned = conflict["planned_hours"]
+                limit = conflict["limit_hours"]
+
+                conflict_serializer = OverloadConflictDataSerializer(
+                    conflict
+                )
+
+                return Response(
+                    {
+                        "success": False,
+                        "message": (
+                            f"Quedarías con "
+                            f"{planned:g}h planificadas "
+                            f"(límite {limit:g}h)."
+                        ),
+                        "data": conflict_serializer.data,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
         subtask = serializer.save()
 
+        response_data = {
+            "success": True,
+            "message": "Subtarea actualizada correctamente.",
+            "data": self.get_serializer(subtask).data,
+        }
+
+        if conflict is not None:
+            response_data["planning"] = {
+                "resolved": True,
+                **conflict,
+            }
+
         return Response(
-            {
-                "success": True,
-                "message": "Subtarea actualizada correctamente.",
-                "data": self.get_serializer(subtask).data,
-            },
+            response_data,
             status=status.HTTP_200_OK,
         )
 
@@ -294,5 +354,62 @@ class TodaySubtaskView(APIView):
                     ).data,
                 },
             },
+            status=status.HTTP_200_OK,
+        )
+
+class OverloadConflictView(APIView):
+
+    @extend_schema(
+        request=OverloadConflictRequestSerializer,
+        responses={
+            200: OverloadConflictResponseSerializer,
+            400: ValidationErrorResponseSerializer,
+            404: MessageErrorResponseSerializer,
+        },
+    )
+    def post(self, request):
+
+        serializer = OverloadConflictRequestSerializer(
+            data=request.data,
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        subtask = Subtask.objects.filter(
+            id=serializer.validated_data["subtask_id"],
+            event__user=request.user,
+        ).first()
+
+        if subtask is None:
+            return Response(
+                {
+                    "success": False,
+                    "message": "La subtarea no existe.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        conflict = check_daily_overload(
+            user=request.user,
+            subtask=subtask,
+            target_date=serializer.validated_data.get(
+                "target_date"
+            ),
+            estimated_hours=serializer.validated_data.get(
+                "estimated_hours"
+            ),
+        )
+
+        response_serializer = OverloadConflictResponseSerializer(
+            {
+                "success": True,
+                "data": conflict,
+            }
+        )
+
+        return Response(
+            response_serializer.data,
             status=status.HTTP_200_OK,
         )
