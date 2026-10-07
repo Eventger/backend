@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from threading import Barrier
+from unittest.mock import patch as mock_patch
 
 from django.contrib.auth import get_user_model
 from django.db import connections
@@ -50,6 +51,44 @@ class PlanningFixture:
 
 
 class PlanningTests(PlanningFixture, TestCase):
+    def test_preview_and_writes_reject_past_dates_without_mutating_task(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self.assertEqual(self.preview(target_date=yesterday.isoformat()).status_code, 400)
+        original = (self.task.target_date, self.task.name, self.task.estimated_hours)
+        for method in [self.client.patch, self.client.put]:
+            response = method(f"/subtasks/{self.task.pk}/", {
+                "target_date": self.at(yesterday).isoformat(), "name": "No guardar",
+                "estimated_hours": "1.00", "state": "pending",
+            }, format="json")
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("target_date", response.data["errors"])
+            self.task.refresh_from_db()
+            self.assertEqual((self.task.target_date, self.task.name, self.task.estimated_hours), original)
+
+    def test_today_is_allowed_using_the_bogota_calendar_at_utc_midnight(self):
+        today = timezone.localdate()
+        now = datetime.combine(today + timedelta(days=1), datetime.min.time()).replace(hour=2, tzinfo=UTC)
+        with mock_patch("django.utils.timezone.now", return_value=now):
+            self.assertEqual(self.preview(target_date=today.isoformat()).status_code, 200)
+            target = f"{(today + timedelta(days=1)).isoformat()}T02:00:00Z"
+            self.assertEqual(self.patch(target_date=target).status_code, 200)
+            yesterday = f"{today.isoformat()}T02:00:00Z"
+            self.assertEqual(self.patch(target_date=yesterday).status_code, 400)
+
+    def test_existing_overdue_tasks_can_still_be_edited_without_moving_to_the_past(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self.task.target_date = self.at(yesterday)
+        self.task.save()
+        response = self.client.patch(f"/subtasks/{self.task.pk}/", {
+            "target_date": self.task.target_date.isoformat(), "details": "Nota actualizada",
+            "estimated_hours": "1.00", "state": "completed",
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.task.target_date), yesterday)
+        self.assertEqual(self.task.details, "Nota actualizada")
+        self.assertEqual(self.task.state, "completed")
+
     def test_default_and_preferences_persist_independently(self):
         url = "/api/auth/preferences/"
         self.assertEqual(self.client.get(url).data["data"]["daily_limit_hours"], "6.00")
@@ -167,3 +206,78 @@ class PlanningConcurrencyTests(PlanningFixture, TransactionTestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(reprogram, [self.task.pk, second.pk]))
         self.assertEqual(sorted(results), [200, 409])
+
+
+class PlanningDeadlineTests(PlanningFixture, TestCase):
+    def test_patch_and_put_reject_after_event_without_changing_other_fields(self):
+        original = (self.task.name, self.task.target_date, self.task.estimated_hours)
+        for method in [self.client.patch, self.client.put]:
+            response = method(f"/subtasks/{self.task.pk}/", {
+                "name": "No debe guardarse", "target_date": self.at(self.day + timedelta(days=16)).isoformat(),
+                "estimated_hours": "3.00", "state": "completed",
+            }, format="json")
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("target_date", response.data["errors"])
+            self.task.refresh_from_db()
+            self.assertEqual((self.task.name, self.task.target_date, self.task.estimated_hours), original)
+            self.assertEqual(self.task.state, "pending")
+
+    def test_event_patch_and_put_reject_deadline_before_tasks(self):
+        original = (self.event.name, self.event.date)
+        for method in [self.client.patch, self.client.put]:
+            response = method(f"/events/{self.event.pk}/", {
+                "name": "No debe guardarse", "type": self.type.pk,
+                "date": self.at(self.day - timedelta(days=2)).isoformat(),
+                "location": "Cali", "contact": "Cliente",
+            }, format="json")
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(self.task.name, str(response.data["errors"]["date"]))
+            self.event.refresh_from_db()
+            self.assertEqual((self.event.name, self.event.date), original)
+
+    def test_event_can_move_to_same_bogota_day_as_latest_task(self):
+        date = timezone.localdate(self.task.target_date)
+        response = self.client.patch(f"/events/{self.event.pk}/", {"date": self.at(date).isoformat()}, format="json")
+        self.assertEqual(response.status_code, 200)
+        # UTC del día siguiente sigue siendo el mismo día en Bogotá.
+        target = f"{(date + timedelta(days=1)).isoformat()}T02:00:00Z"
+        self.assertEqual(self.client.patch(f"/subtasks/{self.task.pk}/", {"target_date": target}, format="json").status_code, 200)
+
+    def test_event_change_invalidates_previous_preview_at_save(self):
+        target = self.day + timedelta(days=1)
+        self.assertEqual(self.preview(target_date=target.isoformat()).status_code, 200)
+        self.assertEqual(self.client.patch(f"/events/{self.event.pk}/", {"date": self.at(self.day).isoformat()}, format="json").status_code, 200)
+        self.assertEqual(self.patch(target_date=self.at(target).isoformat()).status_code, 400)
+        self.task.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.task.target_date), self.day - timedelta(days=1))
+
+    def test_existing_invalid_task_can_still_be_completed_or_annotated(self):
+        Subtask.objects.filter(pk=self.task.pk).update(target_date=self.at(self.day + timedelta(days=16)))
+        response = self.client.patch(f"/subtasks/{self.task.pk}/", {"details": "Conservar avance", "state": "completed"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.details, "Conservar avance")
+        self.assertEqual(self.task.state, "completed")
+
+
+class PlanningDeadlineConcurrencyTests(PlanningFixture, TransactionTestCase):
+    def test_event_and_task_updates_cannot_leave_task_after_event(self):
+        barrier = Barrier(2)
+
+        def write(kind):
+            try:
+                client = APIClient()
+                client.force_authenticate(User.objects.get(pk=self.user.pk))
+                barrier.wait(timeout=10)
+                if kind == "event":
+                    return client.patch(f"/events/{self.event.pk}/", {"date": self.at(self.day).isoformat()}, format="json").status_code
+                return client.patch(f"/subtasks/{self.task.pk}/", {"target_date": self.at(self.day + timedelta(days=1)).isoformat()}, format="json").status_code
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(write, ["event", "task"]))
+        self.assertEqual(sorted(results), [200, 400])
+        self.event.refresh_from_db()
+        self.task.refresh_from_db()
+        self.assertLessEqual(timezone.localdate(self.task.target_date), timezone.localdate(self.event.date))

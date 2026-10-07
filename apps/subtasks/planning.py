@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import ValidationError
 
 from apps.users.models import User
 from .models import Subtask
@@ -76,6 +77,14 @@ def save_planning_update(*, serializer, user):
     current = get_object_or_404(Subtask.objects.select_for_update(), pk=serializer.instance.pk, event__user=user)
     data = serializer.validated_data
     date = data.get("target_date", current.target_date)
+    if (
+        "target_date" in data
+        and timezone.localdate(date) != timezone.localdate(current.target_date)
+        and timezone.localdate(date) < timezone.localdate()
+    ):
+        raise ValidationError({"target_date": ["No puedes reprogramar una tarea para una fecha anterior a hoy."]})
+    if "target_date" in data and timezone.localdate(date) > timezone.localdate(current.event.date):
+        raise ValidationError({"target_date": ["La fecha límite no puede ser posterior a la fecha del evento."]})
     hours = data.get("estimated_hours", current.estimated_hours)
     state = data.get("state", current.state)
     changed = (

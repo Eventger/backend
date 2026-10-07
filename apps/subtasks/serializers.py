@@ -151,6 +151,8 @@ class ReschedulePreviewSerializer(serializers.Serializer):
     state = serializers.ChoiceField(choices=Subtask.State.choices, required=False)
 
     def validate_target_date(self, value):
+        if value < timezone.localdate():
+            raise serializers.ValidationError("No puedes reprogramar una tarea para una fecha anterior a hoy.")
         deadline = timezone.localdate(self.context["subtask"].event.date)
         if value > deadline:
             raise serializers.ValidationError("La fecha límite no puede ser posterior a la fecha del evento.")

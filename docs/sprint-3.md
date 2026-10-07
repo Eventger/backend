@@ -110,3 +110,24 @@ Las pruebas utilizan PostgreSQL aislado en 55432 mediante
 de trabajo ni sobre Supabase. Swagger y el esquema siguen en `/api/docs/` y
 `/api/schema/`; la documentación anterior de Clerk genera avisos de esquema
 preexistentes, que no equivalen a errores de autenticación HTTP.
+
+## Corrección de plazos (7 de octubre de 2026)
+
+La vista previa rechaza fechas anteriores a hoy en Bogotá. PATCH y PUT rechazan
+mover una tarea al pasado con HTTP 400 y `errors.target_date`, sin guardar el resto
+de los cambios. Se permite conservar una fecha histórica al editar una tarea ya
+vencida; esta regla no impide actualizar notas, duración o estado sin moverla.
+
+El guardado de reprogramación también rechaza una fecha posterior al evento con
+HTTP 400 y `errors.target_date`, aun si una vista previa anterior era válida.
+La edición de la fecha del evento rechaza dejar tareas después del nuevo día y
+responde con `errors.date`, identificando hasta cinco tareas para reprogramar.
+Se utiliza el calendario de Bogotá: una tarea y un evento pueden compartir día
+sin exigir que coincidan sus timestamps. El cambio del evento y la reprogramación
+comparten el bloqueo del organizador; una escritura concurrente no puede validar
+contra el plazo anterior. Se conserva la posibilidad de completar o anotar tareas
+con fechas inconsistentes heredadas cuando no se modifica su fecha.
+
+Las regresiones comprueban PATCH/PUT, ausencia de escrituras parciales, misma fecha
+en Bogotá, vista previa obsoleta y concurrencia entre evento y tarea. La suite
+completa del backend pasó con 199 pruebas en PostgreSQL aislado.

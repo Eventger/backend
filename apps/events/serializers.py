@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 from django.utils import timezone
+from django.db import transaction
+from apps.users.models import User
 
 from .models import Event, EventType
 
@@ -54,6 +56,23 @@ class EventSerializer(serializers.ModelSerializer):
                 "La fecha del evento no puede ser anterior a la fecha actual."
             )
         return value
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        # Mismo bloqueo que la reprogramación: no se valida un plazo obsoleto.
+        if instance.user_id is not None:
+            User.objects.select_for_update().get(pk=instance.user_id)
+        current = Event.objects.select_for_update().get(pk=instance.pk)
+        if "date" in validated_data:
+            deadline = timezone.localdate(validated_data["date"])
+            outside = current.subtasks.filter(target_date__date__gt=deadline).order_by("target_date", "pk")
+            names = list(outside.values_list("name", flat=True)[:5])
+            if names:
+                raise serializers.ValidationError({"date": [
+                    "La fecha del evento no puede ser anterior a la fecha límite de sus tareas. "
+                    "Reprograma primero estas tareas: " + ", ".join(names) + "."
+                ]})
+        return super().update(current, validated_data)
 
     def validate_contact(self, value):
         value = value.strip()
