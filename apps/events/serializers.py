@@ -72,10 +72,29 @@ class EventResponseSerializer(serializers.Serializer):
     data = EventSerializer()
 
 
+class EventPaginationSerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1)
+    page_size = serializers.IntegerField(min_value=6, max_value=6)
+    total = serializers.IntegerField(min_value=0)
+    total_pages = serializers.IntegerField(min_value=1)
+
+
 @extend_schema_serializer(many=False)
 class EventListResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     data = EventSerializer(many=True)
+    pagination = EventPaginationSerializer()
+
+
+class EventListFilterSerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1, default=1)
+    type = serializers.IntegerField(min_value=1, required=False)
+
+    def to_internal_value(self, data):
+        if data.get("type") == "":
+            data = data.copy()
+            data.pop("type")
+        return super().to_internal_value(data)
 
 
 class EventTypeListResponseSerializer(serializers.Serializer):

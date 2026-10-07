@@ -4,8 +4,13 @@ from apps.events.models import Event
 from .models import Subtask
 from decimal import Decimal
 from django.db.models import Sum
+from django.db import transaction
+from apps.users.models import User
 
+@transaction.atomic
 def create_subtask(*, event: Event, validated_data):
+    if event.user_id is not None:
+        User.objects.select_for_update().get(pk=event.user_id)
     return Subtask.objects.create(
         event=event, 
         **validated_data
@@ -24,7 +29,7 @@ def get_today_subtasks(*, user, status=None, event_id=None):
 
     subtasks = Subtask.objects.filter(
         event__user=user,
-    ).order_by(
+    ).select_related("event").order_by(
         "target_date",
         "estimated_hours",
     )

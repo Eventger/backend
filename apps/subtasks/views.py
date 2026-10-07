@@ -6,6 +6,10 @@ from drf_spectacular.utils import (
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import action
+from django.utils import timezone
+from datetime import datetime, time
+from apps.users.models import User
 
 from apps.events.models import Event
 from config.api_serializers import (
@@ -27,13 +31,50 @@ from .serializers import (
     TodayResponseSerializer,
     OverloadConflictRequestSerializer,
     OverloadConflictResponseSerializer,
-    OverloadConflictDataSerializer,
+    TodaySubtaskSerializer,
+    ReschedulePreviewSerializer,
+    DayPlanResponseSerializer,
+    SubtaskPlanningResponseSerializer,
 )
 from .services import create_subtask, get_today_subtasks, check_daily_overload
+from .planning import daily_plan, save_planning_update, SchedulingConflict
 
 
 class SubtaskViewSet(viewsets.GenericViewSet):
     serializer_class = SubtaskSerializer
+
+    @extend_schema(
+        request=ReschedulePreviewSerializer,
+        responses={200: DayPlanResponseSerializer, 400: ValidationErrorResponseSerializer, 404: MessageErrorResponseSerializer},
+        description="Vista previa sin escrituras. Suma gestiones pendientes de todos los eventos del organizador en Bogotá.",
+    )
+    @action(detail=True, methods=["post"], url_path="reschedule-preview")
+    def reschedule_preview(self, request, pk=None):
+        subtask = self.get_object()
+        serializer = ReschedulePreviewSerializer(data=request.data, context={"subtask": subtask})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        target_date = timezone.make_aware(datetime.combine(data["target_date"], time(23, 59)))
+        organizer = User.objects.get(pk=request.user.pk)
+        plan = daily_plan(
+            user=organizer, subtask=subtask, target_date=target_date,
+            estimated_hours=data.get("estimated_hours", subtask.estimated_hours), state=data.get("state"),
+        )
+        return Response({"success": True, "data": plan})
+
+    def save_update(self, serializer, request):
+        try:
+            subtask, plan = save_planning_update(serializer=serializer, user=request.user)
+        except SchedulingConflict as exc:
+            return Response({
+                "success": False,
+                "message": f"Quedarías con {exc.plan['planned_hours']} h planificadas (límite {exc.plan['daily_limit_hours']} h).",
+                "data": exc.plan,
+            }, status=status.HTTP_409_CONFLICT)
+        return Response({
+            "success": True, "message": "Subtarea actualizada correctamente.",
+            "data": self.get_serializer(subtask).data, "planning": plan,
+        })
 
     def get_queryset(self):
         return Subtask.objects.filter(
@@ -87,9 +128,10 @@ class SubtaskViewSet(viewsets.GenericViewSet):
     @extend_schema(
         request=SubtaskUpdateSerializer,
         responses={
-            200: SubtaskResponseSerializer,
+            200: SubtaskPlanningResponseSerializer,
             400: ValidationErrorResponseSerializer,
             404: MessageErrorResponseSerializer,
+            409: DayPlanResponseSerializer,
         },
     )
     def update(self, request, *args, **kwargs):
@@ -102,23 +144,15 @@ class SubtaskViewSet(viewsets.GenericViewSet):
 
         serializer.is_valid(raise_exception=True)
 
-        subtask = serializer.save()
-
-        return Response(
-            {
-                "success": True,
-                "message": "Subtarea actualizada correctamente.",
-                "data": self.get_serializer(subtask).data,
-            },
-            status=status.HTTP_200_OK,
-        )
+        return self.save_update(serializer, request)
 
     @extend_schema(
         request=SubtaskUpdateSerializer,
         responses={
-            200: SubtaskResponseSerializer,
+            200: SubtaskPlanningResponseSerializer,
             400: ValidationErrorResponseSerializer,
             404: MessageErrorResponseSerializer,
+            409: DayPlanResponseSerializer,
         },
         examples=SUBTASK_STATE_UPDATE_EXAMPLES,
     )
@@ -133,73 +167,7 @@ class SubtaskViewSet(viewsets.GenericViewSet):
 
         serializer.is_valid(raise_exception=True)
 
-        fields_affecting_load = {
-            "target_date",
-            "estimated_hours",
-            "state",
-        }
-
-        should_check_overload = any(
-            field in serializer.validated_data
-            for field in fields_affecting_load
-        )
-
-        conflict = None
-
-        if should_check_overload:
-            conflict = check_daily_overload(
-                user=request.user,
-                subtask=subtask,
-                target_date=serializer.validated_data.get(
-                    "target_date"
-                ),
-                estimated_hours=serializer.validated_data.get(
-                    "estimated_hours"
-                ),
-                state=serializer.validated_data.get(
-                    "state"
-                ),
-            )
-
-            if conflict["has_conflict"]:
-                planned = conflict["planned_hours"]
-                limit = conflict["limit_hours"]
-
-                conflict_serializer = OverloadConflictDataSerializer(
-                    conflict
-                )
-
-                return Response(
-                    {
-                        "success": False,
-                        "message": (
-                            f"Quedarías con "
-                            f"{planned:g}h planificadas "
-                            f"(límite {limit:g}h)."
-                        ),
-                        "data": conflict_serializer.data,
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-        subtask = serializer.save()
-
-        response_data = {
-            "success": True,
-            "message": "Subtarea actualizada correctamente.",
-            "data": self.get_serializer(subtask).data,
-        }
-
-        if conflict is not None:
-            response_data["planning"] = {
-                "resolved": True,
-                **conflict,
-            }
-
-        return Response(
-            response_data,
-            status=status.HTTP_200_OK,
-        )
+        return self.save_update(serializer, request)
 
     @extend_schema(
         responses={
@@ -336,19 +304,19 @@ class TodaySubtaskView(APIView):
             {
                 "success": True,
                 "data": {
-                    "overdue": SubtaskSerializer(
+                    "overdue": TodaySubtaskSerializer(
                         subtasks["overdue"],
                         many=True,
                     ).data,
-                    "today": SubtaskSerializer(
+                    "today": TodaySubtaskSerializer(
                         subtasks["today"],
                         many=True,
                     ).data,
-                    "upcoming": SubtaskSerializer(
+                    "upcoming": TodaySubtaskSerializer(
                         subtasks["upcoming"],
                         many=True,
                     ).data,
-                    "completed": SubtaskSerializer(
+                    "completed": TodaySubtaskSerializer(
                         subtasks["completed"],
                         many=True,
                     ).data,

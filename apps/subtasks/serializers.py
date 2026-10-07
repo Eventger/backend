@@ -3,6 +3,7 @@ from rest_framework import serializers
 from decimal import Decimal
 
 from .models import Subtask
+from django.utils import timezone
 
 
 class SubtaskSerializer(serializers.ModelSerializer):
@@ -63,12 +64,18 @@ class SubtaskListResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     data = SubtaskSerializer(many=True)
 
+class TodaySubtaskSerializer(SubtaskSerializer):
+    event_name = serializers.CharField(source="event.name", read_only=True)
+
+    class Meta(SubtaskSerializer.Meta):
+        fields = [*SubtaskSerializer.Meta.fields, "event_name"]
+
 
 class TodayDataSerializer(serializers.Serializer):
-    overdue = SubtaskSerializer(many=True)
-    today = SubtaskSerializer(many=True)
-    upcoming = SubtaskSerializer(many=True)
-    completed = SubtaskSerializer(many=True)
+    overdue = TodaySubtaskSerializer(many=True)
+    today = TodaySubtaskSerializer(many=True)
+    upcoming = TodaySubtaskSerializer(many=True)
+    completed = TodaySubtaskSerializer(many=True)
 
 
 class TodayFilterSerializer(serializers.Serializer):
@@ -138,3 +145,38 @@ class OverloadConflictDataSerializer(serializers.Serializer):
 class OverloadConflictResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     data = OverloadConflictDataSerializer()
+class ReschedulePreviewSerializer(serializers.Serializer):
+    target_date = serializers.DateField()
+    estimated_hours = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"), required=False)
+    state = serializers.ChoiceField(choices=Subtask.State.choices, required=False)
+
+    def validate_target_date(self, value):
+        deadline = timezone.localdate(self.context["subtask"].event.date)
+        if value > deadline:
+            raise serializers.ValidationError("La fecha límite no puede ser posterior a la fecha del evento.")
+        return value
+
+
+class DayPlanSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    event_date = serializers.DateField()
+    existing_hours = serializers.DecimalField(max_digits=14, decimal_places=2)
+    added_hours = serializers.DecimalField(max_digits=14, decimal_places=2)
+    planned_hours = serializers.DecimalField(max_digits=14, decimal_places=2)
+    daily_limit_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
+    overload_hours = serializers.DecimalField(max_digits=14, decimal_places=2)
+    has_conflict = serializers.BooleanField()
+    limit_hours = serializers.DecimalField(max_digits=4, decimal_places=2)
+    exceeds_by = serializers.DecimalField(max_digits=14, decimal_places=2)
+    tasks = serializers.ListField(child=serializers.DictField())
+    suggestion = serializers.DictField(allow_null=True)
+
+
+class DayPlanResponseSerializer(serializers.Serializer):
+    success = serializers.BooleanField()
+    message = serializers.CharField(required=False)
+    data = DayPlanSerializer()
+
+
+class SubtaskPlanningResponseSerializer(SubtaskResponseSerializer):
+    planning = DayPlanSerializer()

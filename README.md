@@ -1,8 +1,9 @@
 # Eventger backend
 
 API REST construida con Django y Django REST Framework para gestionar eventos y
-subtareas logísticas. Durante Sprint 1 utiliza el usuario compartido `demo`; la
-autenticación y el aislamiento por usuario corresponden a un sprint posterior.
+subtareas logísticas, con autenticación Clerk y datos por organizador.
+El límite diario y los contratos de reprogramación de Sprint 3 están documentados
+en [docs/sprint-3.md](docs/sprint-3.md).
 
 ## Requisitos
 
@@ -59,19 +60,38 @@ Direcciones locales:
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
-| GET, POST | `/events/` | Listar y crear eventos del usuario demo |
+| GET, POST | `/events/` | Listar eventos paginados (6 por página) y crear eventos del organizador autenticado |
 | GET, PUT, PATCH, DELETE | `/events/{id}/` | Consultar, actualizar o eliminar un evento |
 | GET | `/event-types/` | Listar tipos de evento |
 | GET, POST | `/events/{event_id}/subtasks/` | Listar o crear subtareas dentro de un evento |
-| GET | `/subtasks/` | Listar subtareas del usuario demo |
+| GET | `/subtasks/` | Listar subtareas del organizador autenticado |
 | GET | `/hoy/` | Listar subtareas agrupadas por fecha; admite `status` y `event` como filtros |
 | GET, PUT, PATCH, DELETE | `/subtasks/{id}/` | Consultar, actualizar o eliminar una subtarea |
+| POST | `/subtasks/{id}/reschedule-preview/` | Consultar carga y alternativas sin guardar |
+| GET, PUT | `/api/auth/preferences/` | Consultar o guardar el límite diario de 1–16 horas |
+| DELETE | `/api/auth/me/` | Eliminar la cuenta Clerk y los datos propios de Eventger, con confirmación y reverificación reciente |
 
 `POST /subtasks/` no está habilitado. Toda subtarea debe crearse mediante la ruta
 del evento al que pertenece.
 
 `GET /hoy/` acepta `status` (`pending`, `in_progress` o `completed`) y `event`
 (ID del evento) como parámetros de consulta. Los filtros pueden combinarse.
+Cada tarea incluye `event_name`, obtenido junto con su evento para evitar una
+consulta adicional por tarea y la descarga completa de `/events/` desde Hoy.
+
+`GET /events/?page=2` devuelve hasta 6 eventos en `data`, con el formato habitual
+`success`, y añade `pagination`: `page`, `page_size` (siempre 6), `total` y
+`total_pages`. El conteo y los resultados pertenecen únicamente al usuario
+autenticado. El orden es fecha descendente y, en empates, ID descendente. `page`
+es un entero positivo y vale 1 si se omite; los valores inválidos devuelven 400.
+Una página superior al total se ajusta a la última disponible, también tras una
+eliminación. Una cuenta vacía devuelve `data: []`, página 1 y total 0.
+
+El parámetro opcional `type` es el ID positivo de un tipo de `/event-types/`:
+`GET /events/?page=2&type=1`. Se aplica antes del conteo y la paginación, siempre
+dentro de los eventos del usuario autenticado. Omitirlo o dejarlo vacío devuelve
+todos los tipos; un valor no numérico o no positivo devuelve 400. Un tipo sin
+coincidencias devuelve una lista vacía y total 0, también si ya no existe.
 
 ## Contrato de respuestas
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -98,6 +99,7 @@ USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = csv_env("CORS_ALLOWED_ORIGINS")
+CORS_ALLOW_HEADERS = [*default_headers, "x-account-deletion-confirmation"]
 CSRF_TRUSTED_ORIGINS = csv_env("CSRF_TRUSTED_ORIGINS")
 
 AUTH_USER_MODEL="users.User"
