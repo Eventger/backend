@@ -11,7 +11,9 @@ from config.api_serializers import (
 from config.openapi_examples import EVENT_CREATE_EXAMPLES
 
 from .models import Event, EventType
+from .pagination import EventPagination
 from .serializers import (
+    EventListFilterSerializer,
     EventListResponseSerializer,
     EventResponseSerializer,
     EventSerializer,
@@ -23,30 +25,37 @@ from .services import create_event
 
 class EventViewSet(viewsets.ModelViewSet):
     serializer_class = EventSerializer
+    pagination_class = EventPagination
 
     def get_queryset(self):
         return Event.objects.filter(
             user=self.request.user
-        ).order_by("-date")
+        ).order_by("-date", "-id")
 
     @extend_schema(
-        responses={200: EventListResponseSerializer},
+        parameters=[EventListFilterSerializer],
+        description=(
+            "Devuelve hasta 6 eventos por página, ordenados por fecha descendente. "
+            "El parámetro type filtra por el ID del tipo antes de paginar. "
+            "Las páginas superiores al total se ajustan a la última disponible."
+        ),
+        responses={200: EventListResponseSerializer, 400: ValidationErrorResponseSerializer},
     )
     def list(self, request, *args, **kwargs):
-        events = self.get_queryset()
+        filters = EventListFilterSerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
+        queryset = self.get_queryset()
+        type_id = filters.validated_data.get("type")
+        if type_id is not None:
+            queryset = queryset.filter(type_id=type_id)
+        events = self.paginate_queryset(queryset)
 
         serializer = self.get_serializer(
             events,
             many=True,
         )
 
-        return Response(
-            {
-                "success": True,
-                "data": serializer.data,
-            },
-            status=status.HTTP_200_OK,
-        )
+        return self.get_paginated_response(serializer.data)
 
     @extend_schema(
         request=EventSerializer,

@@ -28,6 +28,18 @@ class HealthTests(SimpleTestCase):
         response = self.client.get("/health/", HTTP_ORIGIN="https://untrusted.example")
         self.assertNotIn("Access-Control-Allow-Origin", response)
 
+    @override_settings(CORS_ALLOWED_ORIGINS=["https://eventger.test"])
+    def test_account_deletion_preflight_allows_confirmation_from_trusted_origin(self):
+        response = self.client.options(
+            "/api/auth/me/", HTTP_ORIGIN="https://eventger.test",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="DELETE",
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS="authorization,x-account-deletion-confirmation",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Access-Control-Allow-Origin"], "https://eventger.test")
+        self.assertIn("x-account-deletion-confirmation", response["Access-Control-Allow-Headers"])
+        self.assertIn("DELETE", response["Access-Control-Allow-Methods"])
+
 
 @override_settings(ALLOWED_HOSTS=["testserver"], SECURE_SSL_REDIRECT=False)
 class OpenAPISchemaTests(SimpleTestCase):
@@ -125,6 +137,7 @@ class OpenAPISchemaTests(SimpleTestCase):
                 "examples"
             ]
         )
+
         self.assertTrue(
             subtask_post["responses"]["400"]["content"]["application/json"][
                 "examples"
@@ -135,3 +148,25 @@ class OpenAPISchemaTests(SimpleTestCase):
                 "examples"
             ]
         )
+
+    def test_events_documents_pagination_and_today_event_names(self):
+        schema = self.get_schema()
+        events = schema["paths"]["/events/"]["get"]
+        self.assertIn("page", [parameter["name"] for parameter in events["parameters"]])
+        self.assertIn("type", [parameter["name"] for parameter in events["parameters"]])
+        self.assertIn("400", events["responses"])
+        components = schema["components"]["schemas"]
+        self.assertIn("pagination", components["EventListResponse"]["required"])
+        self.assertIn("event_name", components["TodaySubtask"]["properties"])
+
+    def test_account_deletion_documents_confirmation_and_reverification(self):
+        schema = self.get_schema()
+        deletion = schema["paths"]["/api/auth/me/"]["delete"]
+        self.assertIn("204", deletion["responses"])
+        self.assertIn("403", deletion["responses"])
+        self.assertIn("503", deletion["responses"])
+        self.assertNotIn("content", deletion["responses"]["204"])
+        confirmation = next(parameter for parameter in deletion["parameters"] if parameter["name"] == "X-Account-Deletion-Confirmation")
+        self.assertEqual(confirmation["in"], "header")
+        self.assertTrue(confirmation["required"])
+        self.assertEqual(confirmation["schema"]["enum"], ["ELIMINAR"])

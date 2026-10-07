@@ -5,6 +5,7 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
 from apps.users.models import User
+from apps.users.services import get_clerk_user
 
 
 class ClerkAuthentication(BaseAuthentication):
@@ -38,11 +39,16 @@ class ClerkAuthentication(BaseAuthentication):
         if not clerk_user_id:
             raise AuthenticationFailed("Clerk token does not contain a user ID.")
 
-        user, _ = User.objects.get_or_create(
-            clerk_id=clerk_user_id,
-            defaults={
-                "username": clerk_user_id,
-            },
-        )
+        user = User.objects.filter(clerk_id=clerk_user_id).first()
+        if user is None:
+            # Un JWT aún no vencido de una cuenta borrada no puede recrear datos.
+            if get_clerk_user(self.clerk, clerk_user_id) is None:
+                raise AuthenticationFailed("The Clerk account no longer exists.")
+            user, _ = User.objects.get_or_create(
+                clerk_id=clerk_user_id,
+                defaults={
+                    "username": clerk_user_id,
+                },
+            )
 
         return user, request_state.payload
