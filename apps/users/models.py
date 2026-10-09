@@ -28,3 +28,13 @@ class User(AbstractUser):
         null=True,
         blank=True,
     )
+
+    def clean(self):
+        super().clean()
+        if self.email:
+            self.email = self.email.strip()
+
+    def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.strip()
+        super().save(*args, **kwargs)

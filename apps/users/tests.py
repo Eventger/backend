@@ -31,3 +31,14 @@ class UserModelTests(TestCase):
             user.daily_limit_hours,
             Decimal("8.00"),
         )
+
+    def test_email_is_trimmed_and_password_is_preserved_exactly(self):
+        user = User.objects.create_user(
+            username="test-trim-user",
+            password="  raw-password-with-spaces  ",
+            email="  user@example.com  ",
+        )
+
+        self.assertEqual(user.email, "user@example.com")
+        self.assertTrue(user.check_password("  raw-password-with-spaces  "))
+        self.assertFalse(user.check_password("raw-password-with-spaces"))
