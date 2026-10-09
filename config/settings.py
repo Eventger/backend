@@ -91,7 +91,7 @@ if os.getenv("DATABASE_URL"):
             "DATABASE_URL debe apuntar a PostgreSQL."
         )
     DATABASES["default"].setdefault("OPTIONS", {})
-    DATABASES["default"]["OPTIONS"]["connect_timeout"] = 5
+    DATABASES["default"]["OPTIONS"]["connect_timeout"] = 15
 
 LANGUAGE_CODE = "es-co"
 TIME_ZONE = "America/Bogota"
