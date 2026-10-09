@@ -3,12 +3,37 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Sum
+from django.db.models.functions import TruncDate
+from django.utils.formats import date_format
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
 from apps.users.models import User
 from .models import Subtask
+
+
+def validate_daily_limit_reduction(*, user, hours):
+    """Comprueba la carga con el organizador bloqueado por la transacción de guardado."""
+    if hours >= user.daily_limit_hours:
+        return
+    busiest = (
+        Subtask.objects.filter(event__user=user)
+        .exclude(state=Subtask.State.COMPLETED)
+        .annotate(day=TruncDate("target_date", tzinfo=timezone.get_default_timezone()))
+        .values("day")
+        .annotate(total=Sum("estimated_hours"))
+        .filter(total__gt=hours)
+        .order_by("-total", "day")
+        .first()
+    )
+    if busiest is not None:
+        hours_label = format(busiest["total"].normalize(), "f").replace(".", ",")
+        day_label = date_format(busiest["day"], "DATE_FORMAT")
+        raise ValidationError({"daily_limit_hours": [
+            f"Tienes {hours_label} h programadas para el {day_label}. "
+            f"Usa al menos {hours_label} h o reprograma.",
+        ]})
 
 
 def daily_plan(*, user, subtask, target_date, estimated_hours, state=None, suggest=True):

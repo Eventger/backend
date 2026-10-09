@@ -100,6 +100,8 @@ class PlanningTests(PlanningFixture, TestCase):
         self.assertEqual(self.client.get(url).data["data"]["daily_limit_hours"], "6.00")
 
     def test_limit_range_and_precision(self):
+        self.task.state = "completed"
+        self.task.save(update_fields=["state"])
         for value in ["0.50", "0", "16.01", "24", "1.001", "NaN"]:
             with self.subTest(value=value):
                 self.assertEqual(self.client.put("/api/auth/preferences/", {"daily_limit_hours": value}, format="json").status_code, 400)
@@ -186,7 +188,105 @@ class PlanningTests(PlanningFixture, TestCase):
         self.assertEqual(self.patch(state="completed").status_code, 200)
 
 
+class PlanningPreferencesTests(PlanningFixture, TestCase):
+    def save_limit(self, hours, **extra):
+        return self.client.put("/api/auth/preferences/", {"daily_limit_hours": str(hours), **extra}, format="json")
+
+    def test_preferences_without_hours_preserve_the_current_limit(self):
+        response = self.client.put("/api/auth/preferences/", {}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["daily_limit_hours"], "6.00")
+
+    def test_reduction_below_existing_load_is_rejected_without_saving(self):
+        for hours in ["1", "1.99"]:
+            with self.subTest(hours=hours):
+                response = self.save_limit(hours)
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.data["success"])
+                self.assertIn("2 h", response.data["errors"]["daily_limit_hours"][0])
+                self.user.refresh_from_db()
+                self.assertEqual(self.user.daily_limit_hours, Decimal("6"))
+                self.assertFalse(self.user.daily_limit_configured)
+        self.assertEqual(self.client.get("/api/auth/preferences/").data["data"]["daily_limit_hours"], "6.00")
+
+    def test_reduction_checks_all_events_in_bogota_and_ignores_completed_and_foreign_tasks(self):
+        self.task.estimated_hours = Decimal("1")
+        self.task.save(update_fields=["estimated_hours"])
+        another = Event.objects.create(user=self.user, name="Otro", type=self.type, date=self.event.date, location="Cali", contact="Cliente")
+        foreign = Event.objects.create(user=self.other, name="Privado", type=self.type, date=self.event.date, location="Cali", contact="Cliente")
+        self.create_task("Pendiente", self.day, 1)
+        progress = self.create_task("En progreso", self.day, 1, event=another, state="in_progress")
+        progress.target_date = datetime.combine(self.day + timedelta(days=1), datetime.min.time()).replace(hour=2, tzinfo=UTC)
+        progress.save(update_fields=["target_date"])
+        self.create_task("Completada", self.day, 12, state="completed")
+        self.create_task("Privada", self.day, 12, event=foreign)
+        response = self.save_limit("1.50")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("2 h", response.data["errors"]["daily_limit_hours"][0])
+        self.assertEqual(self.save_limit("2").status_code, 200)
+
+    def test_reduction_uses_the_busiest_day_not_the_total_of_different_days(self):
+        self.create_task("Día de más carga", self.day, "3.30")
+        self.create_task("Otro día", self.day + timedelta(days=1), "3.20")
+        response = self.save_limit("3.29")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("3,3 h", response.data["errors"]["daily_limit_hours"][0])
+        self.assertEqual(self.save_limit("3.30").status_code, 200)
+
+    def test_equal_load_and_decimal_sums_are_allowed(self):
+        self.create_task("Primera", self.day, "1.10")
+        self.create_task("Segunda", self.day, "2.20")
+        self.assertEqual(self.save_limit("3.30").status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.daily_limit_hours, Decimal("3.30"))
+
+    def test_completed_only_and_empty_planning_allow_the_minimum(self):
+        self.task.state = "completed"
+        self.task.save(update_fields=["state"])
+        self.assertEqual(self.save_limit("1").status_code, 200)
+        self.task.delete()
+        self.assertEqual(self.save_limit("1").status_code, 200)
+
+    def test_overdue_load_is_checked_and_increases_or_unchanged_limits_are_allowed(self):
+        self.create_task("Vencida", timezone.localdate() - timedelta(days=1), 8)
+        self.assertEqual(self.save_limit("5").status_code, 400)
+        self.assertEqual(self.save_limit("6").status_code, 200)
+        self.assertEqual(self.save_limit("7").status_code, 200)
+
+    def test_legacy_import_rejects_unsafe_reductions_and_preserves_the_configured_noop(self):
+        self.assertEqual(self.save_limit("1", only_if_unconfigured=True).status_code, 400)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.daily_limit_configured)
+        self.assertEqual(self.save_limit("4").status_code, 200)
+        response = self.save_limit("1", only_if_unconfigured=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["daily_limit_hours"], "4.00")
+
+
 class PlanningConcurrencyTests(PlanningFixture, TransactionTestCase):
+    def test_limit_reduction_and_reprogramming_cannot_use_stale_capacity(self):
+        self.create_task("Carga existente", self.day, 1)
+        barrier = Barrier(2)
+
+        def write(kind):
+            try:
+                client = APIClient()
+                client.force_authenticate(User.objects.get(pk=self.user.pk))
+                barrier.wait(timeout=10)
+                if kind == "limit":
+                    return client.put("/api/auth/preferences/", {"daily_limit_hours": "2"}, format="json").status_code
+                return client.patch(f"/subtasks/{self.task.pk}/", {"target_date": self.at(self.day).isoformat()}, format="json").status_code
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(write, ["limit", "task"]))
+        self.assertIn(results, ([200, 409], [400, 200]))
+        self.user.refresh_from_db()
+        self.task.refresh_from_db()
+        expected_load = Decimal("3") if timezone.localdate(self.task.target_date) == self.day else Decimal("1")
+        self.assertLessEqual(expected_load, self.user.daily_limit_hours)
+
     def test_two_reprogramming_requests_cannot_both_overload_the_day(self):
         self.task.estimated_hours = Decimal("3")
         self.task.save()
