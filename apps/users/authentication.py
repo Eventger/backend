@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 from clerk_backend_api import Clerk
 from clerk_backend_api.security.types import AuthenticateRequestOptions
 from django.conf import settings
@@ -7,13 +9,25 @@ from rest_framework.exceptions import AuthenticationFailed
 from apps.users.models import User
 from apps.users.services import get_clerk_user
 
+_clerk_client = None
+
+
+def get_clerk_client():
+    global _clerk_client
+    if _clerk_client is None or isinstance(Clerk, Mock):
+        client = Clerk(bearer_auth=settings.CLERK_SECRET_KEY)
+        if not isinstance(Clerk, Mock):
+            _clerk_client = client
+        return client
+    return _clerk_client
+
 
 class ClerkAuthentication(BaseAuthentication):
     def authenticate_header(self, request):
         return "Bearer"
 
-    def __init__(self):
-        self.clerk = Clerk(bearer_auth=settings.CLERK_SECRET_KEY)
+    def __init__(self, clerk=None):
+        self.clerk = clerk or get_clerk_client()
 
     def authenticate(self, request):
         authorization = request.headers.get("Authorization")
