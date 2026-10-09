@@ -14,6 +14,7 @@ from .serializers import (
 )
 from config.api_serializers import ValidationErrorResponseSerializer, MessageErrorResponseSerializer
 from .services import AccountProviderUnavailable, delete_account
+from apps.subtasks.planning import validate_daily_limit_reduction
 
 
 class MeView(APIView):
@@ -96,5 +97,6 @@ class PlanningPreferencesView(APIView):
         only_if_unconfigured = serializer.validated_data.pop("only_if_unconfigured")
         if only_if_unconfigured and user.daily_limit_configured:
             return Response({"success": True, "data": PlanningPreferencesSerializer(user).data})
+        validate_daily_limit_reduction(user=user, hours=serializer.validated_data.get("daily_limit_hours", user.daily_limit_hours))
         serializer.save(daily_limit_configured=True)
         return Response({"success": True, "data": serializer.data})

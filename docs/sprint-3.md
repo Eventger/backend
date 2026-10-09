@@ -27,6 +27,20 @@ PUT de preferencias admite `only_if_unconfigured: true` para importar una
 preferencia anterior de Clerk sin reemplazar una elección guardada mientras se
 procesa la importación. La condición se comprueba dentro de la misma transacción.
 
+Al reducir el límite, el servidor agrupa por fecha de Bogotá las tareas pendientes
+y en progreso de todos los eventos del organizador, incluidas las vencidas. Si la
+carga de algún día supera el valor solicitado, responde HTTP 400 con el mensaje
+en `errors.daily_limit_hours` y conserva tanto el límite como
+`daily_limit_configured`. Indica el día de mayor carga y el mínimo necesario.
+La igualdad con la carga, los aumentos y guardar el mismo límite se permiten;
+las tareas completadas y las de otros organizadores no cuentan. Las importaciones
+de Clerk también se validan si van a escribir; una importación sobre un límite ya
+configurado sigue siendo una operación sin cambios.
+La comprobación y el guardado comparten el bloqueo del organizador con la
+reprogramación y la creación de tareas, evitando calcular con una carga anterior
+a una escritura concurrente ya confirmada. Se conserva el comportamiento de
+creación de planes iniciales descrito abajo; no se añaden migraciones.
+
 La vista previa devuelve `date`, `event_date`, `existing_hours`, `added_hours`,
 `planned_hours`, `daily_limit_hours`, `overload_hours`, `has_conflict`, las tareas
 existentes de ese día y una `suggestion` con fecha y carga resultante, o `null`.
