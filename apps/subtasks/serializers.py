@@ -7,16 +7,23 @@ from django.utils import timezone
 
 
 class SubtaskSerializer(serializers.ModelSerializer):
+    note = serializers.CharField(source="details", required=False, allow_blank=True)
+    status = serializers.CharField(source="state", read_only=True)
+    done_at = serializers.DateTimeField(read_only=True)
+
     class Meta:
         model = Subtask
         fields = [
             "id",
             "event",
             "state",
+            "status",
             "name",
             "target_date",
             "estimated_hours",
             "details",
+            "note",
+            "done_at",
             "created_at",
             "updated_at",
         ]
@@ -24,6 +31,8 @@ class SubtaskSerializer(serializers.ModelSerializer):
             "id",
             "event",
             "state",
+            "status",
+            "done_at",
             "created_at",
             "updated_at",
         ]
@@ -44,13 +53,30 @@ class SubtaskSerializer(serializers.ModelSerializer):
 
 
 class SubtaskUpdateSerializer(SubtaskSerializer):
+    status = serializers.ChoiceField(
+        choices=Subtask.State.choices,
+        source="state",
+        required=False,
+    )
+
     class Meta(SubtaskSerializer.Meta):
         read_only_fields = [
             "id",
             "event",
+            "done_at",
             "created_at",
             "updated_at",
         ]
+
+    def update(self, instance, validated_data):
+        if "state" in validated_data:
+            state = validated_data["state"]
+            if state == Subtask.State.COMPLETED:
+                if instance.done_at is None:
+                    validated_data["done_at"] = timezone.now()
+            else:
+                validated_data["done_at"] = None
+        return super().update(instance, validated_data)
 
 
 class SubtaskResponseSerializer(serializers.Serializer):

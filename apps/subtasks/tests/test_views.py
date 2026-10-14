@@ -31,9 +31,7 @@ class SubtaskCreateViewTests(TestCase):
             user=self.user,
             name="Conferencia de tecnología",
             type=self.event_type,
-            date=timezone.make_aware(
-                datetime(2026, 10, 15, 18, 30),
-            ),
+            date=timezone.now() + timezone.timedelta(days=30),
             location="Cali",
             contact="3001234567",
         )
@@ -1770,3 +1768,188 @@ class OverloadConflictViewTests(TestCase):
             subtask.id,
             overdue_ids,
         )
+
+    def test_mark_subtask_completed_sets_done_at(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea para completar",
+            target_date=timezone.now() + timezone.timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.PENDING,
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {"state": "completed"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(response.data["data"]["state"], "completed")
+        self.assertEqual(response.data["data"]["status"], "completed")
+        self.assertIsNotNone(response.data["data"]["done_at"])
+
+        subtask.refresh_from_db()
+        self.assertEqual(subtask.state, Subtask.State.COMPLETED)
+        self.assertIsNotNone(subtask.done_at)
+
+    def test_unmark_completed_subtask_clears_done_at(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea completada previa",
+            target_date=timezone.now() + timezone.timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.COMPLETED,
+            done_at=timezone.now(),
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {"state": "pending"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["state"], "pending")
+        self.assertIsNone(response.data["data"]["done_at"])
+
+        subtask.refresh_from_db()
+        self.assertEqual(subtask.state, Subtask.State.PENDING)
+        self.assertIsNone(subtask.done_at)
+
+    def test_postpone_subtask_with_note(self):
+        subtask = Subtask.objects.create(
+            event=self.event,
+            name="Subtarea para posponer",
+            target_date=timezone.now() + timezone.timedelta(days=1),
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.PENDING,
+        )
+
+        response = self.client.patch(
+            f"/subtasks/{subtask.id}/",
+            {
+                "status": "postponed",
+                "note": "esperando confirmación de salón",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["state"], "postponed")
+        self.assertEqual(response.data["data"]["status"], "postponed")
+        self.assertEqual(response.data["data"]["note"], "esperando confirmación de salón")
+        self.assertEqual(response.data["data"]["details"], "esperando confirmación de salón")
+        self.assertIsNone(response.data["data"]["done_at"])
+
+        subtask.refresh_from_db()
+        self.assertEqual(subtask.state, Subtask.State.POSTPONED)
+        self.assertEqual(subtask.details, "esperando confirmación de salón")
+        self.assertIsNone(subtask.done_at)
+
+    def test_completed_and_postponed_reduce_today_urgent_load(self):
+        now = timezone.localtime()
+        target_today = now.replace(hour=12, minute=0, second=0, microsecond=0)
+
+        task_done = Subtask.objects.create(
+            event=self.event,
+            name="Tarea para completar hoy",
+            target_date=target_today,
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.PENDING,
+        )
+        task_postpone = Subtask.objects.create(
+            event=self.event,
+            name="Tarea para posponer hoy",
+            target_date=target_today,
+            estimated_hours=Decimal("3.00"),
+            state=Subtask.State.PENDING,
+        )
+
+        # Inicialmente ambas están en today
+        res1 = self.client.get("/hoy/")
+        today_ids = [item["id"] for item in res1.json()["data"]["today"]]
+        self.assertIn(task_done.id, today_ids)
+        self.assertIn(task_postpone.id, today_ids)
+
+        # Completar una
+        self.client.patch(f"/subtasks/{task_done.id}/", {"state": "completed"}, format="json")
+
+        # Posponer la otra con nota
+        self.client.patch(
+            f"/subtasks/{task_postpone.id}/",
+            {"state": "postponed", "note": "Posponer por lluvia"},
+            format="json",
+        )
+
+        # Ambas salen de today (reducción de carga urgente)
+        res2 = self.client.get("/hoy/")
+        today_ids_after = [item["id"] for item in res2.json()["data"]["today"]]
+        self.assertNotIn(task_done.id, today_ids_after)
+        self.assertNotIn(task_postpone.id, today_ids_after)
+
+        completed_ids = [item["id"] for item in res2.json()["data"]["completed"]]
+        self.assertIn(task_done.id, completed_ids)
+
+        # Se comprueba que la tarea pospuesta conserva su estado y no genera carga urgente
+        task_postpone.refresh_from_db()
+        self.assertEqual(task_postpone.state, Subtask.State.POSTPONED)
+
+        # Si se filtra por status=postponed, no genera error
+        res_filtered = self.client.get("/hoy/?status=postponed")
+        self.assertEqual(res_filtered.status_code, 200)
+
+    def test_reactivate_postponed_task_triggers_conflict_when_exceeding_daily_limit(self):
+        target = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=2)
+        Subtask.objects.create(
+            event=self.event,
+            name="Tarea activa 5h",
+            target_date=target,
+            estimated_hours=Decimal("5.00"),
+            state=Subtask.State.PENDING,
+        )
+        postponed_task = Subtask.objects.create(
+            event=self.event,
+            name="Tarea pospuesta 2h",
+            target_date=target,
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.POSTPONED,
+        )
+        res = self.client.patch(
+            f"/subtasks/{postponed_task.id}/",
+            {"state": "pending"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 409)
+        postponed_task.refresh_from_db()
+        self.assertEqual(postponed_task.state, Subtask.State.POSTPONED)
+
+    def test_overload_conflict_with_postponed_subtask_does_not_add_hours(self):
+        target = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=2)
+        Subtask.objects.create(
+            event=self.event,
+            name="Tarea activa 5h",
+            target_date=target,
+            estimated_hours=Decimal("5.00"),
+            state=Subtask.State.PENDING,
+        )
+        postponed_task = Subtask.objects.create(
+            event=self.event,
+            name="Tarea pospuesta 2h",
+            target_date=target,
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.POSTPONED,
+        )
+        res = self.client.post(
+            "/conflicts/overload/",
+            {
+                "subtask_id": postponed_task.id,
+                "target_date": target.isoformat(),
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()["data"]
+        self.assertEqual(Decimal(str(data["planned_hours"])), Decimal("5.00"))
+        self.assertFalse(data["has_conflict"])
