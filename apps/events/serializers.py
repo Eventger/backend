@@ -1,4 +1,4 @@
-from drf_spectacular.utils import extend_schema_serializer
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 from django.utils import timezone
 from django.db import transaction
@@ -15,7 +15,15 @@ class EventTypeSerializer(serializers.ModelSerializer):
             "description",
         ]
 
+class EventProgressSerializer(serializers.Serializer):
+    percentage = serializers.IntegerField(min_value=0, max_value=100)
+    completed = serializers.IntegerField(min_value=0)
+    total = serializers.IntegerField(min_value=0)
+
+
 class EventSerializer(serializers.ModelSerializer):
+    progress = serializers.SerializerMethodField()
+
     class Meta:
         model = Event
         fields = [
@@ -26,15 +34,31 @@ class EventSerializer(serializers.ModelSerializer):
             "date",
             "location",
             "contact",
+            "progress",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "id",
             "user",
+            "progress",
             "created_at",
             "updated_at",
         ]
+
+    @extend_schema_field(EventProgressSerializer)
+    def get_progress(self, obj):
+        total = getattr(obj, "total_subtasks_count", None)
+        completed = getattr(obj, "completed_subtasks_count", None)
+        if total is None:
+            total = obj.subtasks.count()
+            completed = obj.subtasks.filter(state="completed").count()
+        percentage = round((completed / total) * 100) if total > 0 else 0
+        return {
+            "percentage": percentage,
+            "completed": completed,
+            "total": total,
+        }
 
     def validate_name(self, value):
         if not value.strip():

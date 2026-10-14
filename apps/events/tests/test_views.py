@@ -1,12 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
 from rest_framework.test import APIClient
 
 from apps.events.models import Event, EventType
+from apps.subtasks.models import Subtask
 
 User = get_user_model()
 
@@ -616,3 +617,77 @@ class EventCreateViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201)
+
+
+class EventProgressTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username="progress-user",
+            password="test-password",
+        )
+        self.client.force_authenticate(user=self.user)
+        self.event_type = EventType.objects.create(name="Corporativo")
+        self.event = Event.objects.create(
+            user=self.user,
+            name="Lanzamiento de producto",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Bogotá",
+            contact="Carlos Mendoza",
+        )
+
+    def test_event_progress_with_no_subtasks(self):
+        response = self.client.get(f"/events/{self.event.id}/")
+        self.assertEqual(response.status_code, 200)
+        progress = response.json()["data"]["progress"]
+        self.assertEqual(progress["percentage"], 0)
+        self.assertEqual(progress["completed"], 0)
+        self.assertEqual(progress["total"], 0)
+
+    def test_event_progress_updates_dynamically(self):
+        Subtask.objects.create(
+            event=self.event,
+            name="Tarea 1",
+            target_date=timezone.now() + timedelta(days=2),
+            estimated_hours=Decimal("2.00"),
+            state=Subtask.State.COMPLETED,
+            done_at=timezone.now(),
+        )
+        Subtask.objects.create(
+            event=self.event,
+            name="Tarea 2",
+            target_date=timezone.now() + timedelta(days=3),
+            estimated_hours=Decimal("3.00"),
+            state=Subtask.State.PENDING,
+        )
+
+        # 1 de 2 completadas = 50% en detail
+        response = self.client.get(f"/events/{self.event.id}/")
+        self.assertEqual(response.status_code, 200)
+        progress = response.json()["data"]["progress"]
+        self.assertEqual(progress["percentage"], 50)
+        self.assertEqual(progress["completed"], 1)
+        self.assertEqual(progress["total"], 2)
+
+        # 1 de 2 completadas = 50% en list
+        list_response = self.client.get("/events/")
+        self.assertEqual(list_response.status_code, 200)
+        item = [e for e in list_response.json()["data"] if e["id"] == self.event.id][0]
+        self.assertEqual(item["progress"]["percentage"], 50)
+        self.assertEqual(item["progress"]["completed"], 1)
+        self.assertEqual(item["progress"]["total"], 2)
+
+        # Completar la segunda tarea -> 100%
+        st2_obj = Subtask.objects.get(name="Tarea 2")
+        st2_obj.state = Subtask.State.COMPLETED
+        st2_obj.done_at = timezone.now()
+        st2_obj.save()
+
+        res_full = self.client.get(f"/events/{self.event.id}/")
+        self.assertEqual(res_full.status_code, 200)
+        progress_full = res_full.json()["data"]["progress"]
+        self.assertEqual(progress_full["percentage"], 100)
+        self.assertEqual(progress_full["completed"], 2)
+        self.assertEqual(progress_full["total"], 2)
+

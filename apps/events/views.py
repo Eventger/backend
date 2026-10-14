@@ -1,9 +1,11 @@
+from django.db.models import Count, Q
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.subtasks.models import Subtask
 from config.api_serializers import (
     MessageErrorResponseSerializer,
     ValidationErrorResponseSerializer,
@@ -28,9 +30,18 @@ class EventViewSet(viewsets.ModelViewSet):
     pagination_class = EventPagination
 
     def get_queryset(self):
-        return Event.objects.filter(
-            user=self.request.user
-        ).order_by("-date", "-id")
+        return (
+            Event.objects.filter(user=self.request.user)
+            .annotate(
+                total_subtasks_count=Count("subtasks", distinct=True),
+                completed_subtasks_count=Count(
+                    "subtasks",
+                    filter=Q(subtasks__state=Subtask.State.COMPLETED),
+                    distinct=True,
+                ),
+            )
+            .order_by("-date", "-id")
+        )
 
     @extend_schema(
         parameters=[EventListFilterSerializer],

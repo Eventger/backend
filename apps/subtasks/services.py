@@ -45,7 +45,7 @@ def get_today_subtasks(*, user, status=None, event_id=None):
     )
 
     pending_subtasks = subtasks.exclude(
-        state=Subtask.State.COMPLETED,
+        state__in=[Subtask.State.COMPLETED, Subtask.State.POSTPONED],
     )
 
     return {
@@ -72,7 +72,7 @@ def get_daily_planned_hours(
     Calcula las horas planificadas de un usuario
     para el día correspondiente a target_date.
 
-    Las subtareas COMPLETED no cuentan.
+    Las subtareas COMPLETED y POSTPONED no cuentan.
     """
 
     local_date = timezone.localtime(target_date)
@@ -91,7 +91,7 @@ def get_daily_planned_hours(
         target_date__gte=day_start,
         target_date__lt=day_end,
     ).exclude(
-        state=Subtask.State.COMPLETED,
+        state__in=[Subtask.State.COMPLETED, Subtask.State.POSTPONED],
     )
 
     if exclude_subtask_id is not None:
@@ -142,7 +142,7 @@ def check_daily_overload(
         exclude_subtask_id=subtask.id,
     )
 
-    if new_state == Subtask.State.COMPLETED:
+    if new_state in [Subtask.State.COMPLETED, Subtask.State.POSTPONED]:
         subtask_hours = Decimal("0.00")
     else:
         subtask_hours = new_estimated_hours

@@ -19,7 +19,7 @@ def validate_daily_limit_reduction(*, user, hours):
         return
     busiest = (
         Subtask.objects.filter(event__user=user)
-        .exclude(state=Subtask.State.COMPLETED)
+        .exclude(state__in=[Subtask.State.COMPLETED, Subtask.State.POSTPONED])
         .annotate(day=TruncDate("target_date", tzinfo=timezone.get_default_timezone()))
         .values("day")
         .annotate(total=Sum("estimated_hours"))
@@ -41,12 +41,12 @@ def daily_plan(*, user, subtask, target_date, estimated_hours, state=None, sugge
     day = timezone.localdate(target_date)
     limit = user.daily_limit_hours
     pending = Subtask.objects.filter(event__user=user).exclude(
-        state=Subtask.State.COMPLETED,
+        state__in=[Subtask.State.COMPLETED, Subtask.State.POSTPONED],
     ).exclude(pk=subtask.pk)
     tasks = list(pending.filter(target_date__date=day).select_related("event"))
     existing = sum((task.estimated_hours for task in tasks), Decimal("0"))
     candidate_state = state if state is not None else subtask.state
-    added = estimated_hours if candidate_state != Subtask.State.COMPLETED else Decimal("0")
+    added = estimated_hours if candidate_state not in [Subtask.State.COMPLETED, Subtask.State.POSTPONED] else Decimal("0")
     total = existing + added
     overload = max(total - limit, Decimal("0"))
     deadline = timezone.localdate(subtask.event.date)
@@ -115,10 +115,13 @@ def save_planning_update(*, serializer, user):
     changed = (
         timezone.localdate(date) != timezone.localdate(current.target_date)
         or hours != current.estimated_hours
-        or (current.state == Subtask.State.COMPLETED and state != current.state)
+        or (
+            current.state in [Subtask.State.COMPLETED, Subtask.State.POSTPONED]
+            and state != current.state
+        )
     )
     plan = daily_plan(user=organizer, subtask=current, target_date=date, estimated_hours=hours, state=state)
-    if changed and state != Subtask.State.COMPLETED and plan["has_conflict"]:
+    if changed and state not in [Subtask.State.COMPLETED, Subtask.State.POSTPONED] and plan["has_conflict"]:
         raise SchedulingConflict(plan)
     serializer.instance = current
     return serializer.save(), plan

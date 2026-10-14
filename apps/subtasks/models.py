@@ -6,6 +6,7 @@ class Subtask(models.Model):
         PENDING = "pending", "Pendiente"
         IN_PROGRESS = "in_progress", "En Progreso"
         COMPLETED = "completed", "Completada"
+        POSTPONED = "postponed", "Pospuesta"
 
     event = models.ForeignKey(
         Event,
@@ -24,6 +25,7 @@ class Subtask(models.Model):
         default=State.PENDING
     )
     details = models.TextField(blank=True)
+    done_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
