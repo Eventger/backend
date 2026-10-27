@@ -26,6 +26,7 @@ from .services import create_event
 
 
 class EventViewSet(viewsets.ModelViewSet):
+    queryset = Event.objects.none()
     serializer_class = EventSerializer
     pagination_class = EventPagination
 
@@ -48,6 +49,7 @@ class EventViewSet(viewsets.ModelViewSet):
         description=(
             "Devuelve hasta 6 eventos por página, ordenados por fecha descendente. "
             "El parámetro type filtra por el ID del tipo antes de paginar. "
+            "El parámetro search filtra por subcadena insensible a mayúsculas en el nombre del evento. "
             "Las páginas superiores al total se ajustan a la última disponible."
         ),
         responses={200: EventListResponseSerializer, 400: ValidationErrorResponseSerializer},
@@ -59,6 +61,9 @@ class EventViewSet(viewsets.ModelViewSet):
         type_id = filters.validated_data.get("type")
         if type_id is not None:
             queryset = queryset.filter(type_id=type_id)
+        search = filters.validated_data.get("search")
+        if search:
+            queryset = queryset.filter(name__icontains=search)
         events = self.paginate_queryset(queryset)
 
         serializer = self.get_serializer(

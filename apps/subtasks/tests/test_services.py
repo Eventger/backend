@@ -64,6 +64,22 @@ class CreateSubtaskServiceTests(TestCase):
             self.event,
         )
 
+    def test_create_subtask_raises_validation_error_when_exceeds_daily_limit(self):
+        from rest_framework.exceptions import ValidationError
+        self.user.daily_limit_hours = 4
+        self.user.save()
+
+        validated_data = {
+            "name": "Supera límite",
+            "target_date": timezone.make_aware(datetime(2026, 10, 20, 8, 0)),
+            "estimated_hours": Decimal("5.00"),
+        }
+
+        with self.assertRaises(ValidationError) as ctx:
+            create_subtask(event=self.event, validated_data=validated_data)
+
+        self.assertIn("no puede superar tu límite diario", str(ctx.exception))
+
     def test_create_subtask_assigns_pending_state(self):
         validated_data = {
             "name": "Reservar lugar",

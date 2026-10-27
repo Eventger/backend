@@ -8,6 +8,20 @@ from rest_framework.exceptions import AuthenticationFailed
 
 from apps.users.models import User
 from apps.users.services import get_clerk_user
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
+
+
+class ClerkAuthenticationScheme(OpenApiAuthenticationExtension):
+    target_class = "apps.users.authentication.ClerkAuthentication"
+    name = "clerkAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Token JWT de Clerk en encabezado Authorization: Bearer <token>",
+        }
 
 _clerk_client = None
 

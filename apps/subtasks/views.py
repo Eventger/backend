@@ -41,6 +41,7 @@ from .planning import daily_plan, save_planning_update, SchedulingConflict
 
 
 class SubtaskViewSet(viewsets.GenericViewSet):
+    queryset = Subtask.objects.none()
     serializer_class = SubtaskSerializer
 
     @extend_schema(
@@ -248,6 +249,7 @@ class EventSubtaskView(APIView):
 
         serializer = SubtaskSerializer(
             data=request.data,
+            context={"request": request},
         )
 
         serializer.is_valid(raise_exception=True)
@@ -287,6 +289,13 @@ class TodaySubtaskView(APIView):
                 required=False,
                 description="Filtra por el ID del evento.",
             ),
+            OpenApiParameter(
+                name="date",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filtra la agenda enfocando una fecha específica (YYYY-MM-DD).",
+            ),
         ],
     )
     def get(self, request):
@@ -298,6 +307,7 @@ class TodaySubtaskView(APIView):
             user=request.user,
             status=filters.validated_data.get("status"),
             event_id=filters.validated_data.get("event"),
+            date=filters.validated_data.get("date"),
         )
 
         return Response(

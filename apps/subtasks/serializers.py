@@ -49,6 +49,19 @@ class SubtaskSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Las horas estimadas deben ser mayores que 0."
             )
+        user = None
+        request = self.context.get("request")
+        if request and getattr(request, "user", None) and request.user.is_authenticated:
+            user = request.user
+        elif self.instance and hasattr(self.instance, "event") and hasattr(self.instance.event, "user"):
+            user = self.instance.event.user
+
+        if user and hasattr(user, "daily_limit_hours") and value > user.daily_limit_hours:
+            limit = user.daily_limit_hours
+            hours_label = format(limit.normalize(), "f").replace(".", ",") if hasattr(limit, "normalize") else str(limit).replace(".", ",")
+            raise serializers.ValidationError(
+                f"El tiempo estimado no puede superar tu límite diario de {hours_label} h."
+            )
         return value
 
 
@@ -112,6 +125,10 @@ class TodayFilterSerializer(serializers.Serializer):
 
     event = serializers.IntegerField(
         min_value=1,
+        required=False,
+    )
+
+    date = serializers.DateField(
         required=False,
     )
 

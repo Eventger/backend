@@ -3,6 +3,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from django.db import transaction
 from apps.users.models import User
+from apps.subtasks.models import Subtask
 
 from .models import Event, EventType
 
@@ -89,7 +90,9 @@ class EventSerializer(serializers.ModelSerializer):
         current = Event.objects.select_for_update().get(pk=instance.pk)
         if "date" in validated_data:
             deadline = timezone.localdate(validated_data["date"])
-            outside = current.subtasks.filter(target_date__date__gt=deadline).order_by("target_date", "pk")
+            outside = current.subtasks.exclude(
+                state__in=[Subtask.State.POSTPONED, Subtask.State.COMPLETED]
+            ).filter(target_date__date__gt=deadline).order_by("target_date", "pk")
             names = list(outside.values_list("name", flat=True)[:5])
             if names:
                 raise serializers.ValidationError({"date": [
@@ -132,11 +135,24 @@ class EventListResponseSerializer(serializers.Serializer):
 class EventListFilterSerializer(serializers.Serializer):
     page = serializers.IntegerField(min_value=1, default=1)
     type = serializers.IntegerField(min_value=1, required=False)
+    search = serializers.CharField(required=False, allow_blank=True, max_length=150)
 
     def to_internal_value(self, data):
-        if data.get("type") == "":
+        if hasattr(data, "copy"):
             data = data.copy()
-            data.pop("type")
+        else:
+            data = dict(data)
+
+        if data.get("type") == "":
+            data.pop("type", None)
+
+        if "search" in data:
+            cleaned = str(data.get("search", "")).strip()
+            if not cleaned:
+                data.pop("search", None)
+            else:
+                data["search"] = cleaned
+
         return super().to_internal_value(data)
 
 
