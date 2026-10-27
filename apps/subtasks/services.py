@@ -1,3 +1,4 @@
+from datetime import datetime, time
 from django.utils import timezone
 
 from apps.events.models import Event
@@ -10,21 +11,37 @@ from apps.users.models import User
 @transaction.atomic
 def create_subtask(*, event: Event, validated_data):
     if event.user_id is not None:
-        User.objects.select_for_update().get(pk=event.user_id)
+        user = User.objects.select_for_update().get(pk=event.user_id)
+        estimated_hours = validated_data.get("estimated_hours")
+        if estimated_hours is not None and estimated_hours > user.daily_limit_hours:
+            from rest_framework.exceptions import ValidationError
+            limit = user.daily_limit_hours
+            hours_label = format(limit.normalize(), "f").replace(".", ",") if hasattr(limit, "normalize") else str(limit).replace(".", ",")
+            raise ValidationError({
+                "estimated_hours": [
+                    f"El tiempo estimado no puede superar tu límite diario de {hours_label} h."
+                ]
+            })
     return Subtask.objects.create(
         event=event, 
         **validated_data
     )
 
-def get_today_subtasks(*, user, status=None, event_id=None):
-    now = timezone.localtime()
-
-    today_start = now.replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
+def get_today_subtasks(*, user, status=None, event_id=None, date=None):
+    if date is not None:
+        tz = timezone.get_current_timezone()
+        today_start = timezone.make_aware(
+            datetime.combine(date, time.min),
+            tz,
+        )
+    else:
+        now = timezone.localtime()
+        today_start = now.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
     tomorrow_start = today_start + timezone.timedelta(days=1)
 
     subtasks = Subtask.objects.filter(

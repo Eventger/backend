@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -230,6 +230,41 @@ class SubtaskCreateViewTests(TestCase):
             response_data["errors"],
         )
 
+        self.assertEqual(
+            Subtask.objects.count(),
+            0,
+        )
+
+    def test_create_subtask_rejects_estimated_hours_greater_than_daily_limit(self):
+        self.user.daily_limit_hours = 4
+        self.user.save()
+
+        data = {
+            "name": "Montar escenario",
+            "target_date": "2026-10-20T08:00:00-05:00",
+            "estimated_hours": "5",
+        }
+
+        response = self.client.post(
+            f"/events/{self.event.id}/subtasks/",
+            data,
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        response_data = response.json()
+        self.assertIn(
+            "estimated_hours",
+            response_data["errors"],
+        )
+        self.assertIn(
+            "no puede superar tu límite diario",
+            response_data["errors"]["estimated_hours"][0],
+        )
         self.assertEqual(
             Subtask.objects.count(),
             0,
@@ -922,6 +957,31 @@ class SubtaskCreateViewTests(TestCase):
         self.assertEqual(data["today"], [])
         self.assertEqual(data["upcoming"], [])
 
+    def test_today_filters_by_specific_date(self):
+        event = Event.objects.create(
+            user=self.user,
+            name="Evento para fecha específica",
+            type=self.event_type,
+            date=timezone.now() + timedelta(days=10),
+            location="Cali",
+            contact="Laura",
+        )
+        target_date = (timezone.localtime() + timedelta(days=5)).date()
+        target_dt = timezone.make_aware(datetime.combine(target_date, time(10, 0)))
+        subtask = Subtask.objects.create(
+            event=event,
+            name="Tarea en fecha específica",
+            target_date=target_dt,
+            estimated_hours=2,
+            state=Subtask.State.PENDING,
+        )
+        res_default = self.client.get("/hoy/")
+        self.assertIn(subtask.id, [t["id"] for t in res_default.data["data"]["upcoming"]])
+
+        res_date = self.client.get("/hoy/", {"date": target_date.isoformat()})
+        self.assertEqual(res_date.status_code, 200)
+        self.assertIn(subtask.id, [t["id"] for t in res_date.data["data"]["today"]])
+
     def test_today_excludes_subtasks_from_other_users(self):
         other_user = User.objects.create_user(
             username="other",
@@ -1236,15 +1296,11 @@ class OverloadConflictViewTests(TestCase):
             user=self.user,
             name="Conferencia de tecnología",
             type=self.event_type,
-            date=timezone.make_aware(
-                datetime(2026, 10, 25, 18, 30),
-            ),
+            date=timezone.now().replace(minute=0, second=0, microsecond=0) + timedelta(days=10),
             location="Cali",
         )
 
-        self.target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        self.target_date = timezone.now().replace(minute=0, second=0, microsecond=0) + timedelta(days=2)
     def test_overload_endpoint_detects_conflict(self):
         Subtask.objects.create(
             event=self.event,
@@ -1403,9 +1459,7 @@ class OverloadConflictViewTests(TestCase):
             Decimal("2.00"),
         )
     def test_patch_subtask_updates_target_date_when_no_conflict_exists(self):
-        target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        target_date = self.target_date
 
         Subtask.objects.create(
             event=self.event,
@@ -1441,9 +1495,7 @@ class OverloadConflictViewTests(TestCase):
             target_date,
         )
     def test_patch_subtask_does_not_update_when_overload_exists(self):
-        target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        target_date = self.target_date
 
         Subtask.objects.create(
             event=self.event,
@@ -1501,9 +1553,7 @@ class OverloadConflictViewTests(TestCase):
             original_date,
         )
     def test_patch_subtask_resolves_conflict_by_reducing_hours(self):
-        target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        target_date = self.target_date
 
         Subtask.objects.create(
             event=self.event,
@@ -1545,9 +1595,7 @@ class OverloadConflictViewTests(TestCase):
             Decimal("1.00"),
         )
     def test_patch_subtask_keeps_conflict_when_reduction_is_not_enough(self):
-        target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        target_date = self.target_date
 
         Subtask.objects.create(
             event=self.event,
@@ -1591,9 +1639,7 @@ class OverloadConflictViewTests(TestCase):
             Decimal("3.00"),
         )
     def test_patch_name_is_allowed_even_if_day_is_overloaded(self):
-        target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        target_date = self.target_date
 
         Subtask.objects.create(
             event=self.event,
@@ -1629,9 +1675,7 @@ class OverloadConflictViewTests(TestCase):
             "Nombre actualizado",
         )
     def test_patch_completed_state_is_allowed_when_day_is_overloaded(self):
-        target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        target_date = self.target_date
 
         Subtask.objects.create(
             event=self.event,
@@ -1667,9 +1711,7 @@ class OverloadConflictViewTests(TestCase):
             Subtask.State.COMPLETED,
         )
     def test_patch_completed_to_pending_is_blocked_if_it_causes_overload(self):
-        target_date = timezone.make_aware(
-            datetime(2026, 10, 20, 14, 0),
-        )
+        target_date = self.target_date
 
         Subtask.objects.create(
             event=self.event,

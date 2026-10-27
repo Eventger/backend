@@ -11,6 +11,7 @@ from .serializers import (
     PlanningPreferencesSerializer, PlanningPreferencesResponseSerializer,
     PlanningPreferencesUpdateSerializer,
     DeleteAccountSerializer, ReverificationResponseSerializer,
+    UserMeSerializer,
 )
 from config.api_serializers import ValidationErrorResponseSerializer, MessageErrorResponseSerializer
 from .services import AccountProviderUnavailable, delete_account
@@ -20,6 +21,10 @@ from apps.subtasks.planning import validate_daily_limit_reduction
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={200: UserMeSerializer},
+        description="Devuelve la información del usuario autenticado actual.",
+    )
     def get(self, request):
         return Response(
             {

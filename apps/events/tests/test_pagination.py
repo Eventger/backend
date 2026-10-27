@@ -153,3 +153,65 @@ class EventPaginationTests(TestCase):
         response = self.client.get(f"/events/{self.events[0].pk}/", {"type": 999999})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["id"], self.events[0].pk)
+
+    def test_search_filter_is_applied_before_pagination_and_count(self):
+        event_type = self.events[0].type
+        # Create events with distinctive names
+        Event.objects.create(
+            user=self.user, name="Gala Benéfica Anual", type=event_type,
+            date=self.events[0].date, location="Cali", contact="Contacto",
+        )
+        Event.objects.create(
+            user=self.user, name="Cena de Gala VIP", type=event_type,
+            date=self.events[0].date, location="Cali", contact="Contacto",
+        )
+        # Search substring 'Gala'
+        response = self.client.get("/events/", {"search": "gala"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pagination"]["total"], 2)
+        self.assertEqual(response.data["pagination"]["total_pages"], 1)
+        names = [item["name"] for item in response.data["data"]]
+        self.assertIn("Gala Benéfica Anual", names)
+        self.assertIn("Cena de Gala VIP", names)
+
+    def test_search_case_insensitive_and_substring(self):
+        # "Evento 1" should match "Evento 1", "Evento 10", "Evento 11", "Evento 12"
+        response = self.client.get("/events/", {"search": "evento 1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pagination"]["total"], 4)
+        for item in response.data["data"]:
+            self.assertIn("evento 1", item["name"].lower())
+
+    def test_search_combined_with_type(self):
+        second_type = EventType.objects.create(name="Tipo Exclusivo")
+        matched = Event.objects.create(
+            user=self.user, name="Lanzamiento de Producto Tech", type=second_type,
+            date=self.events[0].date, location="Cali", contact="Contacto",
+        )
+        # Same name but other type
+        Event.objects.create(
+            user=self.user, name="Lanzamiento de Producto Moda", type=self.events[0].type,
+            date=self.events[0].date, location="Cali", contact="Contacto",
+        )
+        response = self.client.get("/events/", {"search": "Lanzamiento", "type": second_type.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pagination"]["total"], 1)
+        self.assertEqual(response.data["data"][0]["id"], matched.pk)
+
+    def test_search_empty_or_whitespace_is_ignored(self):
+        for search_val in ["", "   "]:
+            with self.subTest(search=search_val):
+                response = self.client.get("/events/", {"search": search_val})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data["pagination"]["total"], 13)
+
+    def test_search_without_matches_returns_empty_paginated_list(self):
+        response = self.client.get("/events/", {"search": "Nombre Inexistente XYZ"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"], [])
+        self.assertEqual(response.data["pagination"], {
+            "page": 1,
+            "page_size": 6,
+            "total": 0,
+            "total_pages": 1,
+        })

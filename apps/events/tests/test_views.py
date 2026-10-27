@@ -47,7 +47,7 @@ class EventCreateViewTests(TestCase):
         self.valid_data = {
             "name": "Evento de prueba",
             "type": self.event_type.id,
-            "date": "2026-10-15T18:30:00-05:00",
+            "date": (timezone.now() + timedelta(days=30)).isoformat(),
             "location": "Cali",
             "contact": "Juan Pérez",
         }
@@ -56,7 +56,7 @@ class EventCreateViewTests(TestCase):
         data = {
             "name": "Conferencia de tecnología",
             "type": self.event_type.id,
-            "date": "2026-10-15T18:30:00-05:00",
+            "date": (timezone.now() + timedelta(days=30)).isoformat(),
             "location": "Cali",
             "contact": "Juan Pérez",
         }
@@ -173,7 +173,7 @@ class EventCreateViewTests(TestCase):
         data = {
             "name": "   ",
             "type": self.event_type.id,
-            "date": "2026-10-15T18:30:00-05:00",
+            "date": (timezone.now() + timedelta(days=30)).isoformat(),
             "location": "Cali",
         }
 
@@ -204,7 +204,7 @@ class EventCreateViewTests(TestCase):
         data = {
             "name": "Conferencia de tecnología",
             "type": 999999,
-            "date": "2026-10-15T18:30:00-05:00",
+            "date": (timezone.now() + timedelta(days=30)).isoformat(),
             "location": "Cali",
             "contact": "Juan Pérez",
         }

@@ -122,6 +122,10 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "API REST para la gestión de eventos de Eventger.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "ENUM_NAME_OVERRIDES": {
+        "StatusEnum": "apps.subtasks.models.Subtask.State",
+    },
 }
 
 if os.getenv("RENDER") == "true":
